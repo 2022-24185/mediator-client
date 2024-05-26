@@ -30,7 +30,7 @@ echo "Deactivating any other active Python environments..."
 deactivate || true
 
 # Create a virtual environment if it doesn't exist
-VENV_DIR="social_regulator_env"
+VENV_DIR="mediator_client_env"
 if [ -d "$VENV_DIR" ]; then
     echo "Virtual environment already exists."
 else
