@@ -1,0 +1,15 @@
+selenium
+undetected_chromedriver
+webdriver_manager
+anthropic
+cohere
+requests
+setuptools
+nltk
+pytest
+pytest-qt
+pytest-mock
+pyqt5
+pyQt5-stubs
+numpy
+neat-python

@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"path": "../../../social_regulator_server"
+		}
+	],
+	"settings": {
+		"cody.internal.unstable": true
+	}
+}
