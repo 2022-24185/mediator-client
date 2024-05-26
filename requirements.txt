@@ -6,10 +6,12 @@ cohere
 requests
 setuptools
 nltk
-pytest
-pytest-qt
-pytest-mock
 pyqt5
 pyQt5-stubs
 numpy
 neat-python
+# dev
+vulture
+pytest
+pytest-qt
+pytest-mock

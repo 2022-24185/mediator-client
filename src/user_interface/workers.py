@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from src.mediator_manager.manager import MediatorManagementModule
     from src.client.client import SignalManager
     from src.backends.backend_setup.openai import ChatGPT
+    from src.backends.backend_setup.google import Bard
     from src.data_collection.collector import ClientDataCollector
 
 
@@ -193,22 +194,6 @@ class MediatorSwitchWorker(QThread):
         self.signal_manager.new_mediator_assigned.disconnect(self.handle_new_mediator_assigned)
         self.quit()
 
-class DataTransferWorker(QThread):
-    def __init__(self, data, signal_manager):
-        super().__init__()
-        self.data = data
-        self.signal_manager : 'SignalManager'  = signal_manager
-        self.signal_manager.data_transfer_completed.connect(self.handle_data_transfer_complete)
-    
-    def run(self):
-        self.signal_manager.request_data_aggregation.emit(self.data)
-
-    @pyqtSlot(bool)
-    def handle_data_transfer_complete(self, success):
-        logging.info(f"Data transfer complete: {success}")
-        self.signal_manager.data_transfer_completed.disconnect(self.handle_data_transfer_complete)
-        self.quit()
-
 class MediatorProcessingWorker(QThread): 
     def __init__(self, data: UserData, mediator_manager, signal_manager):
         super().__init__()
@@ -233,32 +218,3 @@ class MediatorProcessingWorker(QThread):
     def handle_mediator_processing_completed(self, response):
         self.signal_manager.mediator_processing_completed.disconnect(self.handle_mediator_processing_completed)
         self.quit()
-
-class MediatorInterventionWorker(QThread):
-    def __init__(self, data_collector, mediator_manager, chatbot_interface, signal_manager):
-        super().__init__()
-        self.data_collector = data_collector
-        self.mediator_manager = mediator_manager
-        self.chatbot_interface = chatbot_interface
-        self.signal_manager = signal_manager
-
-    def run(self):
-        logging.info("Mediator intervention started")
-        try:
-            # Fetch latest data
-            latest_data = self.data_collector.fetch_latest_data()
-            if latest_data:
-                # Process data with the mediator
-                response = self.mediator_manager.process_data(latest_data)
-                # Send response to chatbot using SendMessageWorker
-                send_message_worker = SendMessageToChatbotWorker(response, self.chatbot_interface, self.signal_manager, is_secret=True)
-                send_message_worker.start()
-                # Log interaction
-                self.data_collector.log_interaction(latest_data, response)
-                self.signal_manager.mediator_intervention_completed.emit(True)
-            else:
-                logging.warning("No latest data available for mediator intervention")
-                self.signal_manager.mediator_intervention_completed.emit(False)
-        except Exception as e:
-            logging.error(f"Mediator intervention failed: {e}")
-            self.signal_manager.mediator_intervention_completed.emit(False)

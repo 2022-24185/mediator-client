@@ -3,7 +3,6 @@ from src.backends.backend_setup.discover import get_chrome_version
 #from backends.basic_service import BasicService
 from src.backends.gemini_base import Bard
 from src.backends.backend_setup.openai import ChatGPT
-from selenium.webdriver.chrome.options import Options
 
 # automatic
 # CHROME_PATH = get_chrome_path()

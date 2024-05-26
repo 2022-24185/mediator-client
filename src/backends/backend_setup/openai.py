@@ -3,7 +3,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from functools import partial
 
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException, WebDriverException
 
@@ -14,9 +13,6 @@ import logging
 from typing import Optional
 from selenium.webdriver.remote.webelement import WebElement
 from PyQt5.QtCore import QObject, pyqtSignal, QThread, pyqtSlot
-from selenium.webdriver.chrome.options import Options
-
-
 
 # Create a new logger
 logger = logging.getLogger()
@@ -159,9 +155,6 @@ class ChatGPT(QObject, SeleniumService):
             self._load_page('https://chatgpt.com/?oai-dm=1&temporary-chat=true')
         except: 
             logging.error("Error opening ChatGPT")
-            
-    def login_fallback(self):
-        logging.error("Login failed, attempting to refresh and retry...")
 
     def open(self):
         self._load_page('https://chatgpt.com/?oai-dm=1&temporary-chat=true')
@@ -265,34 +258,6 @@ class ChatGPT(QObject, SeleniumService):
         self.worker = None
         self.signal_holder.chatbot_response_retrieved.emit(message)
 
-    # def retrieve_response(self) -> str:
-    #     """Retrieve the response from ChatGPT with improved error and stability handling."""
-    #     try:
-    #         if not self.is_first_message: 
-    #             logging.info("Attempting to retrieve response...")
-    #             self.wait_for_element(self.TXT_RESPONSE_ITEMS, timeout=5)
-    #             logging.info("Response items located.")
-    #         self.is_ready = True
-    #         block = self.wait_for_element(self.TXT_RESPONSE_BLOCK, timeout=1)
-    #         text_content = block.get_attribute('textContent')
-    #         text_content.strip()  # Strip to remove any leading/trailing whitespace
-    #         if self.is_response_error(text_content):
-    #             logging.error("Error detected in response, retrying...")
-    #             self.refresh_and_retry()
-    #             return self.retrieve_response()
-    #         logging.info("Response successfully retrieved.")
-    #         return text_content
-    #     except Exception as e:
-    #         self.log_error(e, "Failed to retrieve response")
-    #         raise
-
-
-
-    def is_response_error(self, text: str) -> bool:
-        """Check for known error messages in the response."""
-        error_phrases = ['Something went wrong', 'network error', 'Only one message at a time', 'Hmm...something seems to have gone wrong.']
-        return any(phrase in text for phrase in error_phrases)
-
     def refresh_and_retry(self):
         """Refresh the page and retry the operation."""
         try:
@@ -378,22 +343,9 @@ class ChatGPT(QObject, SeleniumService):
         if version_selector.get_attribute("aria-expanded") == True: 
             version_selector.click()
 
-    def set_session_name(self, session_name: str):
-        """Set the session name and flag for renaming."""
-        self.session_name = session_name
-        self.session_needs_renaming = True
-
-    def setup_session(self, session_name):
-        """Setup or rename a session based on provided name."""
-        self.worker.rename_session(session_name)
-
     def recover_from_error(self):
         """Handle recovery from errors by refreshing the chat interface."""
         self.worker.refresh_chat()
-
-    def handle_element_clickable(self, element, locator):
-        # Handle clickable element (e.g., perform click or further UI update)
-        logging.info(f"Element with locator {locator} is clickable.")
 
     def handle_error(self, error_type, message):
         """Handle different types of errors with appropriate UI feedback or recovery actions."""
@@ -402,15 +354,6 @@ class ChatGPT(QObject, SeleniumService):
             self.recover_from_error()
         else:
             logging.error(f"{error_type} - {message}")
-
-    def find_and_click_chat_button(self):
-        self.worker.find_and_click("//button[@data-testid='send-button']")
-
-    def enter_text_and_send(self, text):
-        """Send text to the ChatGPT input field."""
-        self.worker.wait_for_clickable("//textarea[@id='input-field']")
-        self.worker.driver.find_element(By.XPATH, "//textarea[@id='input-field']").send_keys(text + Keys.ENTER)
-
 
     def wait_for_element(self, locator, timeout=1) -> Optional[WebElement]:
         """Wait for an element to be present and visible on the page."""
@@ -437,14 +380,6 @@ class ChatGPT(QObject, SeleniumService):
             return element
         except TimeoutException:
             logging.error(f"Timeout waiting for {description} with locator: {locator}")
-            return None
-
-    def find_element_directly(self, xpath):
-        """Find an element by its text content."""
-        try:
-            return self.driver.find_element(By.XPATH, xpath)
-        except NoSuchElementException:
-            logging.error(f"Element not found directly: {xpath}")
             return None
 
     def find_and_click(self, locator) -> Optional[WebElement]:
@@ -475,43 +410,6 @@ class ChatGPT(QObject, SeleniumService):
         except Exception as e:
             logging.error(f"JavaScript click failed for {locator}. Error: {e}")
             return None
-            
-
-    def js_find_and_click(self, locator, description="element"):
-        """Use JavaScript to click an element when standard click fails."""
-        try:
-            element = self.driver.find_element(By.XPATH, locator)
-            self.driver.execute_script("arguments[0].click();", element)
-            logging.info(f"JavaScript click performed on {description}.")
-            return element
-        except NoSuchElementException as e:
-            logging.error(f"Element not found for JavaScript click: {locator}. Error: {e}")
-            raise NoSuchElementException(f"No element found for locator: {locator}") from e
-        except Exception as e:
-            logging.error(f"JavaScript click failed on {description}: {e}")
-            raise Exception(f"JavaScript click failed: {e}") from e
-
-    def _wait_and_click(self, locator, description="element", timeout=10):
-        """Wait for an element to be clickable and then click it."""
-        element = self.wait_for_clickable(locator, timeout)
-        if element:
-            try:
-                element.click()
-                logging.info(f"Clicked on {description}.")
-            except ElementClickInterceptedException as e:
-                self.log_error(e, f"{description} was not clickable at the moment. Attempting JS click")
-                self.js_click(element)
-
-        
-    def js_click(self, element, description="element"):
-        """Use JavaScript to click an element when standard click fails."""
-        try:
-            self.driver.execute_script("arguments[0].click();", element)
-            logging.info(f"JavaScript click performed on {description}.")
-        except Exception as e:
-            logging.error(f"JavaScript click failed on {description}: {e}")
-            # raise the jsclickexception
-            raise JSClickException(e)
 
     def log_error(self, e, message):
         """Log an exception with a custom message."""
@@ -522,9 +420,9 @@ class ChatGPT(QObject, SeleniumService):
         """Safely attempt to rename a session to avoid conflicts and ensure uniqueness."""
         try:
             # Wait and click the edit button to start renaming
-            edit_btn = self._wait_and_click("//nav ol li div button", "Edit session button")
+            self.find_and_click("//nav ol li div button", "Edit session button")
             # Click the 'Rename' option in the dropdown
-            rename_btn = self._wait_and_click("div[role='menuitem']:nth-child(2)", "Rename menu item")
+            self.find_and_click("div[role='menuitem']:nth-child(2)", "Rename menu item")
             # Clear the existing name and enter a new one
             name_field = self._find_element_css("nav ol li div div input")
             name_field.clear()

@@ -86,7 +86,7 @@ class NetworkHandler(ISystemModule, INetworkHandler):
             return response 
         except requests.exceptions.RequestException as e:
             logging.error(f"Network error: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status_code": "error", "message": str(e)}
 
     def send_data(self, data):
         logging.info(f"Sending data: {data} to {self.endpoint}")
