@@ -1,7 +1,8 @@
+
 from PyQt5.QtCore import QObject, pyqtSignal
 from src.interfaces.i_signal_manager import BaseSignalManager
 
-class ChatSignalManager(QObject, BaseSignalManager):
+class NetworkSignalManager(QObject, BaseSignalManager):
     """ Deals with outgoing signals for the Chatbot API """
     secret_user_msg_received = pyqtSignal()
     secret_chatbot_msg_received = pyqtSignal(str)

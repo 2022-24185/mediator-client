@@ -97,6 +97,7 @@ class ChatbotGUI(QWidget):
         return callback
     
     def request_new_mediator(self):
+        # TODO: move responsibility for time keeping to data collector
         time_elapsed = time.time() - self.start_time
         self.signal_manager.request_new_mediator.emit()
 
