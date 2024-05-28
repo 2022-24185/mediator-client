@@ -3,6 +3,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from enum import Enum
 
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException, WebDriverException
 
@@ -10,9 +11,13 @@ import sys # exit
 import time
 import datetime
 import logging
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from selenium.webdriver.remote.webelement import WebElement
 from PyQt5.QtCore import QObject, pyqtSignal, QThread, pyqtSlot
+import debugpy
+
+if TYPE_CHECKING:
+    from src.client.client import SignalManager
 
 # Create a new logger
 logger = logging.getLogger()
@@ -36,6 +41,23 @@ logger.addHandler(info_handler)
 logger.addHandler(warning_handler)
 logger.addHandler(error_handler)
 
+class Action(Enum):
+    CLICK = "click"
+    ENTER_TEXT = "enter text"
+    ENTER_TEXT_BLOCK = "enter text block"
+    RETRIEVE_TEXT = "retrieve text"
+
+class Element(Enum):
+    TXTFLD_PROMPT = "//textarea[@id='prompt-textarea']"
+    BTN_SEND = "//button[@data-testid='fruitjuice-send-button']"
+    TXT_RESPONSE_ITEMS = "((//div[contains(@class, 'agent-turn')])[last()]//button[contains(@class, 'text-token-text-secondary')])[last()]"
+    TXT_RESPONSE_BLOCK = "(//div[@data-message-author-role='assistant' and contains(@class, 'text-message')])[last()]"
+    BTN_PREFERENCES = "//button[contains(@class,'flex w-full')]"
+    BTN_VERSION_SELECTOR = "//div[@aria-haspopup='menu']"
+    BTN_NEW_CHAT = "//nav[@aria-label='Chat history']//button[contains(@class, 'h-10')]"
+    BTN_NEW_CHAT_COLLAPSED = "//button[contains(@class, 'h-10') and contains(@class, 'rounded-lg')]"
+
+
 class JSClickException(Exception):
     """Exception raised when a JavaScript click fails."""
     pass
@@ -44,16 +66,18 @@ class ElementLocatorWorker(QThread):
     element_found = pyqtSignal(object, str, str)  # E.g., (WebElement, locator, extra)
     error_occurred = pyqtSignal(str, str)  # E.g., (error_message, locator)
 
-    def __init__(self, _parent, driver, locator, extra=None):
+    def __init__(self, _parent: 'ChatGPT', driver, locator: Enum, extra=None):
         super().__init__()
         self.driver = driver
-        self.locator = locator
+        self.locator = locator.value
         self.extra = extra
         self.is_secret = False
         self._parent = _parent
+        logging.info("\033[94mElementLocatorWorker INITIALIZED\033[0m")
 
     def run(self):
-        #logging.info(f"Running Locator for: {self.locator}")
+        #debugpy.debug_this_thread()
+        logging.info(f"\033[92mRunning Locator for: {self.locator}\033[0m")
         timeout = 100
         if self.locator == "//textarea[@id='prompt-textarea']":
             timeout = 20
@@ -61,26 +85,33 @@ class ElementLocatorWorker(QThread):
             element = WebDriverWait(self.driver, timeout=timeout).until(
                 EC.presence_of_element_located((By.XPATH, self.locator))
             )
-            logger.info(f"Element located with locator: {self.locator}")
-            #logger.info(f"Element: {element.get_attribute('outerHTML')}")
+            logging.info(f"Element located with locator: {self.locator}")
+            #logging.info(f"Element: {element.get_attribute('outerHTML')}")
+            logging.info("\033[96mAbout to emit element found\033[0m")
             self.element_found.emit(element, self.locator, self.extra)
-            #logger.info("Signal emitted")
+            logging.info("Signal emitted from element locator")
         except TimeoutException:
+            logging.info("\033[96mAbout to emit error occured\033[0m")
             self.error_occurred.emit("Timeout while locating element", self.locator)
         except Exception as e:
+            logging.info("\033[96mAbout to emit error occured\033[0m")
+            logging.error(str(e))
             self.error_occurred.emit(f"Exception: {str(e)}", self.locator)
+        finally: 
+            self.cleanup()
 
     def cleanup(self):
         # Disconnect all signals here
-        self.element_found.disconnect(self._parent.handle_text_entered)
+        self.element_found.disconnect(self._parent.handle_element_found)
         self.error_occurred.disconnect(self._parent.handle_error)
+        logging.info("SIGNALS DISCONNECTED: LOCATOR")
 
 
 class ActionExecutorWorker(QThread):
-    action_completed = pyqtSignal(str, str)  # E.g., (action, message)
+    action_completed = pyqtSignal(object, str)  # E.g., (action enum, message)
     error_occurred = pyqtSignal(str, str)  # E.g., (error_message, action)
 
-    def __init__(self, _parent, driver, element, action, value=None):
+    def __init__(self, _parent: 'ChatGPT', driver, element, action, value=None):
         super().__init__()
         self.driver = driver
         self.element = element
@@ -88,37 +119,46 @@ class ActionExecutorWorker(QThread):
         self.value = value
         self.is_secret = False
         self._parent = _parent
+        logging.info("\033[94mActionExecutorWorker INITIALIZED\033[0m")
 
     def run(self):
-        #logging.info(f"Attempting to execute action '{self.action}'...")
+        #debugpy.debug_this_thread()
+        logging.info(f"\033[92mRunning Action: {self.action}\033[0m")
         self.success_msg = f"Action '{self.action}' completed successfully."
         try:
-            if self.action == "click":
+            if self.action == Action.CLICK:
                 self.element.click()
-            elif self.action == "enter_text":
+            elif self.action == Action.ENTER_TEXT:
                 self.element : WebElement
                 self.element.clear()
                 self.element.send_keys(self.value + Keys.ENTER)
-            elif self.action == "enter_text_block": 
+            elif self.action == Action.ENTER_TEXT_BLOCK: 
                 self.element : WebElement
                 self.element.clear()
                 self.driver.execute_script("arguments[0].value = arguments[1];", self.element, self.value)
                 self.element.send_keys(Keys.ENTER)
                 self.element.send_keys(Keys.ENTER)
-            elif self.action == "retrieve_text":
-                #logger.info(f"element is {self.element.get_attribute('outerHTML')}")
+            elif self.action == Action.RETRIEVE_TEXT:
+                #logging.info(f"element is {self.element.get_attribute('outerHTML')}")
                 text_content = self.element.get_attribute('textContent')
                 text_content.strip()  # Strip to remove any leading/trailing whitespace
                 self.success_msg = text_content
-            logger.info(f"Action '{self.action}' completed successfully.")
+            logging.info(f"Action '{self.action}' completed successfully.")
+            logging.info("\033[96mAbout to emit action completed\033[0m")
             self.action_completed.emit(self.action,self.success_msg)
+            logging.info("Signal emitted from action worker")
         except Exception as e:
+            logging.info("\033[96mAbout to emit error occured\033[0m")
+            logging.error(str(e))
             self.error_occurred.emit(f"Exception: {str(e)}", self.action)
+        finally: 
+            self.cleanup()
 
     def cleanup(self):
         # Disconnect all signals here
-        self.action_completed.disconnect(self._parent.handle_text_entered)
+        self.action_completed.disconnect(self._parent.handle_action_completed)
         self.error_occurred.disconnect(self._parent.handle_error)
+        logging.info("SIGNALS DISCONNECTED: ACTION")
 
 class ChatGPT(QObject, SeleniumService):
     TXTFLD_PROMPT = "//textarea[@id='prompt-textarea']"
@@ -130,7 +170,7 @@ class ChatGPT(QObject, SeleniumService):
     BTN_NEW_CHAT = "//nav[@aria-label='Chat history']//button[contains(@class, 'h-10')]"
     BTN_NEW_CHAT_COLLAPSED = "//button[contains(@class, 'h-10') and contains(@class, 'rounded-lg')]"
 
-    def __init__(self, signal_holder, **kwargs):
+    def __init__(self, signal_manager : 'SignalManager', **kwargs):
         super().__init__(**kwargs)
         # set when opening a new session with a desired name
         # we have to wait until after the first query to
@@ -143,7 +183,8 @@ class ChatGPT(QObject, SeleniumService):
         self.is_ready = True
         self.is_first_message = True
         self.worker = None
-        self.signal_holder = signal_holder
+        if signal_manager: 
+            self.signals = signal_manager.api_signals
 
     def get_service_name():
         return "OpenAI's ChatGPT"
@@ -151,19 +192,15 @@ class ChatGPT(QObject, SeleniumService):
     def open_login(self):
         # deal with "who's using chrome?"
         try: 
-            time.sleep(20)
+
+            time.sleep(2)
             self._load_page('https://chatgpt.com/?oai-dm=1&temporary-chat=true')
         except: 
             logging.error("Error opening ChatGPT")
 
     def open(self):
         self._load_page('https://chatgpt.com/?oai-dm=1&temporary-chat=true')
-        self._wait_until_xpath(ChatGPT.BTN_SEND) # PREFS is last thing to load
-
-    def close(self):
-        self.thread.quit()
-        self.thread.wait()
-        super().close()
+        self._wait_until_xpath(Element.BTN_SEND.value) # PREFS is last thing to load
 
     def get_models(self) -> list[str]:
         return ['GPT-3.5', 'GPT-4o','GPT-4']
@@ -183,31 +220,53 @@ class ChatGPT(QObject, SeleniumService):
             if self.worker is not None:
                 logging.info("Waiting for worker to be freed")
                 self.worker.wait()
-            self.worker = ElementLocatorWorker(self, self.driver, self.TXTFLD_PROMPT, text)
-            self.worker.element_found.connect(self.handle_input_field_located)
+                logging.info(f"num of workers: {1 if self.worker else 0}")
+            self.worker = ElementLocatorWorker(self, self.driver, Element.TXTFLD_PROMPT, text)
+            self.worker.element_found.connect(self.handle_element_found)
             self.worker.error_occurred.connect(self.handle_error)
             self.worker.start()
             logging.info("Waiting for input field to be located...")
         except Exception as e:
             logging.error(f"Error occurred in enter_text: {e}")
     
-    @pyqtSlot(object, str, str)
-    def handle_input_field_located(self, element, locator, text):
-        logging.info("Input field IS located.")
+    def found_element_input_field(self, element, locator, text):
+        logging.info("\033[95mChatGPT found element input field\033[0")
         try:
             if self.worker is not None:
                 logging.info("Waiting for worker to be freed in input field located")
                 self.worker.wait()
+                logging.info(f"num of workers: {1 if self.worker else 0}")
             logging.info("Input field located.")
             cleansed_text = self.cleanse_input(text)
-            self.worker = ActionExecutorWorker(self, self.driver, element, "enter_text_block", cleansed_text)
-            self.worker.action_completed.connect(self.handle_text_entered)
+            self.worker = ActionExecutorWorker(self, self.driver, element, Action.ENTER_TEXT_BLOCK, cleansed_text)
+            self.worker.action_completed.connect(self.handle_action_completed)
             self.worker.error_occurred.connect(self.handle_error)
             self.worker.start()
         except Exception as e:
             logging.error(f"Error occurred in handle_input_field_located: {e}")
 
+    @pyqtSlot(object, str)
+    def handle_action_completed(self, action, value):
+        logging.info("\033[90mChatGPT handle action completed\033[0m")
+        logging.info(f"Action '{action.value}' completed.")
+        if (action == Action.ENTER_TEXT_BLOCK) or (action == Action.ENTER_TEXT):
+            self.handle_text_entered(value)
+        elif action == Action.RETRIEVE_TEXT:
+            self.handle_text_retrieved(value)
+
+    @pyqtSlot(object, str, str)
+    def handle_element_found(self, element, locator, extra):
+        logging.info("\033[90mChatGPT handle element found\033[0m")
+        logging.info(f"Element '{locator}' completed.")
+        if locator == Element.TXTFLD_PROMPT.value:
+            self.found_element_input_field(element, locator, extra)
+        elif locator == Element.TXT_RESPONSE_ITEMS.value:
+            self.found_element_response_items(element, locator, extra)
+        elif locator == Element.TXT_RESPONSE_BLOCK.value:
+            self.found_element_response(element, locator, extra)
+        
     def handle_text_entered(self, message):   
+        logging.info("\033[95mChatGPT handle text entered\033[0m")
         logging.info(message)     
         self.retrieve_response()
 
@@ -222,41 +281,51 @@ class ChatGPT(QObject, SeleniumService):
         if self.worker is not None:
             logging.info("Waiting for worker to be freed to retrieve response")
             self.worker.wait()
+            logging.info(f"num of workers: {1 if self.worker else 0}")
         logging.info("Attempting to check for response...")
         # first wait for one second
         time.sleep(3)
-        self.worker = ElementLocatorWorker(self, self.driver, self.TXT_RESPONSE_ITEMS)
-        self.worker.element_found.connect(self.handle_chatbot_done_writing)
+        self.worker = ElementLocatorWorker(self, self.driver, Element.TXT_RESPONSE_ITEMS)
+        self.worker.element_found.connect(self.handle_element_found)
         self.worker.error_occurred.connect(self.handle_error)
         self.worker.start()
 
-    def handle_chatbot_done_writing(self, element, locator, extra):
+    def found_element_response_items(self, element, locator, extra):
+        logging.info("\033[95mChatGPT found element response items\033[0m")
         if self.worker is not None:
             logging.info("Waiting for worker to be freed after done writing")
             self.worker.wait()
-        self.worker = ElementLocatorWorker(self, self.driver, self.TXT_RESPONSE_BLOCK)
-        self.worker.element_found.connect(self.handle_response_located)
+        self.worker = ElementLocatorWorker(self, self.driver, Element.TXT_RESPONSE_BLOCK)
+        self.worker.element_found.connect(self.handle_element_found)
         self.worker.error_occurred.connect(self.handle_error)
         self.worker.start()
 
-    def handle_response_located(self, element, locator, extra):
+    def found_element_response(self, element, locator, extra):
+        logging.info("\033[95mChatGPT found element response\033[0m")
         if self.worker is not None:
             logging.info("Waiting for worker to be freed after response located")
             self.worker.wait()
-        self.worker = ActionExecutorWorker(self, self.driver, element, "retrieve_text")
-        self.worker.action_completed.connect(self.handle_text_retrieved)
+            logging.info(f"num of workers: {1 if self.worker else 0}")
+        self.worker = ActionExecutorWorker(self, self.driver, element, Action.RETRIEVE_TEXT)
+        self.worker.action_completed.connect(self.handle_action_completed)
         self.worker.error_occurred.connect(self.handle_error)
         self.worker.start()
 
-    def handle_text_retrieved(self, action, message):
+    def handle_text_retrieved(self, message):
+        logging.info("\033[95mChatGPT handle text retrieved\033[0m")
         if self.worker is not None:
-            logging.info("Waiting for worker to be freed after response located")
+            logging.info("Waiting for worker to be freed after text retrieved")
             self.worker.wait()
-        logging.info(message)
+            logging.info(f"num of workers: {1 if self.worker else 0}")
+            logging.info("Worker freed after text retrieved")
+        #logging.info(message)
         self.is_ready = True
         self.is_first_message = False
         self.worker = None
-        self.signal_holder.chatbot_response_retrieved.emit(message)
+        logging.info("\033[96mAbout to emit response collected\033[0m")
+        self.signals.chatbot_response_collected.emit(message)
+        logging.info("\033[96mAbout to emit is ready to go\033[0m")
+        self.signals.is_ready_to_go.emit(True)
 
     def refresh_and_retry(self):
         """Refresh the page and retry the operation."""
@@ -284,7 +353,7 @@ class ChatGPT(QObject, SeleniumService):
         try:
             logging.info(f"Attempting to open chat for session: {session_name}")
             # Wait for the preferences button to ensure the page is loaded
-            if not self.wait_for_element(self.BTN_PREFERENCES, timeout=10):
+            if not self.wait_for_element(Element.BTN_PREFERENCES.value, timeout=10):
                 logging.error("Preferences button not found.")
                 raise NoSuchElementException("Preferences button not found.")
             logging.info("Preferences button found, continuing.")
@@ -319,11 +388,11 @@ class ChatGPT(QObject, SeleniumService):
     def click_new_chat_button(self):
         """Click the New Chat button."""
         try:
-            btn_new_chat = self.wait_for_clickable(self.BTN_NEW_CHAT, timeout=2)
+            btn_new_chat = self.wait_for_clickable(Element.BTN_NEW_CHAT.value, timeout=2)
             if btn_new_chat:
                     btn_new_chat.click()
             else:
-                self.find_and_click(self.BTN_NEW_CHAT_COLLAPSED)
+                self.find_and_click(Element.BTN_NEW_CHAT_COLLAPSED.value)
                 logging.info("Clicked on collapsed version of new chat button.")
         except Exception as e:
             self.log_error(e, "An unexpected error occurred while starting a new chat")
@@ -331,7 +400,7 @@ class ChatGPT(QObject, SeleniumService):
 
     def select_model(self, model: str):
         # Click the version selector to open the menu
-        version_selector = self.find_and_click(self.BTN_VERSION_SELECTOR)
+        version_selector = self.find_and_click(Element.BTN_VERSION_SELECTOR.value)
 
         # Click the specific model
         model_xpath = f"//div[@role='menuitem' and contains(text(), '{model}')]"
@@ -432,3 +501,7 @@ class ChatGPT(QObject, SeleniumService):
         except Exception as e:
             logging.error(f"Failed to rename session: {e}")
             raise
+
+    def close(self):
+        # cleanup
+        SeleniumService.close(self)
