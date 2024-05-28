@@ -1,14 +1,14 @@
 # src/data_collection/collector.py
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+from pydantic import BaseModel, ValidationError
 
 from src.interfaces.i_data_collector import IDataCollector
 from src.interfaces.i_serializable import ISerializable
 from src.interfaces.i_system_module import ISystemModule
-from src.interfaces.data_models import UserData, ResponseModel
+from src.interfaces.data_models import UserData
 
 if TYPE_CHECKING:
     from src.network_handler.handler import NetworkHandler
@@ -39,18 +39,14 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
         logging.info(f"Client Data Collector configured with {config}")
 
     def start(self):
-        super().start()
-        self.is_running = True
-        logging.info("Client Data Collector started")
+        self._change_running_state(True, "started")
 
     def stop(self):
-        super().stop()
-        self.is_running = False
-        logging.info("Client Data Collector stopped")
+        self._change_running_state(False, "stopped")
 
     def reset(self):
         super().reset()
-        self.data_store.clear()
+        self.data_store = UserData(genome_id=0, time_since_startup=0.0, user_rating=0)
         logging.info("Client Data Collector reset")
 
     def update(self):
@@ -62,43 +58,61 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
 
     def collect_data_for_mediator(self):
         data = self.get_data()
-        data_for_transfer = data.model_dump()
-        logging.info("\033[96mAbout to emit data ready for mediator\033[0m")
+        data_for_transfer = self.to_dict(data)
+        logging.info("About to emit data ready for mediator")
         self.signals.data_ready_for_mediator.emit(data_for_transfer)
 
     def get_data(self) -> UserData:
         return self.data_store
 
-    def update_database(self, data):
+    def update_database(self, data: Union[dict, BaseModel]):
         logging.info(f"Collecting data: {data}")
         try:
-            logging.info(f"Data before update: {self.data_store}")
-            self.data_store = self.data_store.model_copy(update=data)
+            if isinstance(data, BaseModel):
+                data_dict = self.to_dict(data)
+            elif isinstance(data, dict):
+                data_dict = data
+            else:
+                raise ValueError("Unsupported data type for update")
+            
+            updated_data = self.data_store.model_copy(update=data_dict)
+            self.data_store = updated_data
             logging.info(f"Data in storage: {self.data_store}")
             return True
-        except Exception as e:
-            logging.warning(e)
+        except (ValidationError, ValueError) as e:
+            logging.warning(f"Failed to update data store: {e}")
             return False
 
     def send_data(self):
-        self.network_handler.send_data(self.data_store)
+        serialized_data = self.to_dict(self.data_store)
+        self.network_handler.send_data(serialized_data)
 
     def request_mediator_with_stored_data(self):
-        logging.info("\033[31mCOLLECTOR FETCHING DATA\033[0m")
+        logging.info("COLLECTOR FETCHING DATA")
+        self._ensure_data_store_type()
+        response = self.network_handler.request_mediator_swap(self.data_store)
+        self._handle_mediator_response(response)
+
+    def to_dict(self, data: BaseModel) -> dict:
+        logging.info("Serializing data...")
+        return data.model_dump()
+
+    def to_model(self, dictionary: dict) -> UserData:
+        logging.info("Deserializing data...")
+        return UserData.model_validate(dictionary)
+
+    def _change_running_state(self, state: bool, action: str):
+        self.is_running = state
+        logging.info(f"Client Data Collector {action}")
+
+    def _ensure_data_store_type(self):
         if not isinstance(self.data_store, UserData):
             raise ValueError("Data store is not of type UserData")
-        response = self.network_handler.request_mediator_swap(self.data_store)
+
+    def _handle_mediator_response(self, response):
         if response.status_code == 200:
-            logging.info("\033[34mFETCHED IN COLLECTOR\033[0m")
-            logging.info("\033[96mAbout to emit new mediator fetched\033[0m")
+            logging.info("FETCHED IN COLLECTOR")
+            logging.info("About to emit new mediator fetched")
             self.signals.new_mediator_fetched.emit(response.json())
         else:
             logging.info(f"Failed to send data to server: {response.status_code}")
-
-    def serialize(self, data):
-        logging.info("Serializing data...")
-        return str(data)
-
-    def deserialize(self, serialized_data):
-        logging.info("Deserializing data...")
-        return eval(serialized_data)
