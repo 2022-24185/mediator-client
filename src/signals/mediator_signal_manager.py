@@ -1,25 +1,20 @@
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import pyqtSignal
 from src.interfaces.i_signal_manager import BaseSignalManager
 
-class MediatorSignalManager(QObject, BaseSignalManager):
-    mediator_data_received = pyqtSignal(str)
-    request_mediator_processing = pyqtSignal(str)
-    request_data_for_mediator = pyqtSignal()
-    request_mediator_message_submission = pyqtSignal(str, bool)
-    request_mediator_intervention = pyqtSignal()
-    new_mediator_assigned = pyqtSignal(int)
-    mediator_processing_completed = pyqtSignal(str, bool)
-    mediator_intervention_completed = pyqtSignal(bool)
+class MediatorSignalManager(BaseSignalManager):
+    """Deals with outgoing signals from the Mediator Manager"""
+    mediator_requested = pyqtSignal(dict) # load new, pass old data
+    mediator_data_requested = pyqtSignal() # fetch data
+    mediator_msg_ready = pyqtSignal(str, bool) # (msg, is_secret) send to chatbot
+    new_mediator_assigned = pyqtSignal(dict) # (mediator id) 
+    mediator_intervention_completed = pyqtSignal(bool) 
 
     def __init__(self):
         super().__init__()
         self.signals = [
-            self.mediator_data_received,
-            self.request_mediator_processing,
-            self.request_data_for_mediator,
-            self.request_mediator_message_submission,
-            self.request_mediator_intervention,
+            self.mediator_requested,
+            self.mediator_data_requested,
+            self.mediator_msg_ready,
             self.new_mediator_assigned,
-            self.mediator_processing_completed,
             self.mediator_intervention_completed
        ]

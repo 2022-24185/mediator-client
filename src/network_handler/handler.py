@@ -82,7 +82,7 @@ class NetworkHandler(ISystemModule, INetworkHandler):
                 response = requests.post(
                     self.endpoint + "/request_new_mediator", json=data.model_dump(), headers=headers
                 )
-                logging.info(f"Server response: {response.json()}")
+                logging.info(f"Server response: {response.json()}"[:50])
             return response 
         except requests.exceptions.RequestException as e:
             logging.error(f"Network error: {e}")
