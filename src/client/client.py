@@ -1,5 +1,4 @@
 import sys
-import threading
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QThread
 from src.interfaces.i_system_module import ISystemModule
@@ -26,6 +25,7 @@ from PyQt5.QtCore import QObject
 
 from typing import List
 
+
 class SignalManager(QObject):
     def __init__(self) -> None:
         super().__init__()
@@ -34,29 +34,31 @@ class SignalManager(QObject):
         self.mediator_signals = MediatorSignalManager()
         self.chat_signals = ChatSignalManager()
         self.api_signals = APISignalManager()
-        
-    def get_signals(self) -> list[BaseSignalManager]: 
+
+    def get_signals(self) -> list[BaseSignalManager]:
         return [
             self.chat_signals,
             self.gui_signals,
             self.collector_signals,
             self.mediator_signals,
-            self.api_signals
+            self.api_signals,
         ]
 
-class SignalHandler(QObject): 
-    def __init__(self, signal_manager: 'SignalManager'): 
+
+class SignalHandler(QObject):
+    def __init__(self, signal_manager: "SignalManager"):
         super().__init__()
         self.signal_manager = signal_manager
-        self.handlers : list[BaseSignalHandler] = []
+        self.handlers: list[BaseSignalHandler] = []
 
-    def add_handler(self, handler : BaseSignalHandler, main_class : ISystemModule):
+    def add_handler(self, handler: BaseSignalHandler, main_class: ISystemModule):
         self.handlers.append(handler(self.signal_manager, main_class))
 
     def connect_signals(self):
         # not needed: this happens in the base signal handler constructor
-        for handler in self.handlers: 
+        for handler in self.handlers:
             handler.connect_signals()
+
 
 class BackgroundTaskHandler(QThread):
     def __init__(self, data_collector, network_handler, mediator_manager):
@@ -71,25 +73,32 @@ class BackgroundTaskHandler(QThread):
         self.network_handler.start()
         self.mediator_manager.start()
 
+
 class Client(ISystemModule):
     def __init__(self):
         super().__init__()
-        self.mode = None # "TEST"
+        self.mode = None  # "TEST"
         self.app = QApplication(sys.argv)  # Initialize QApplication in the main thread
         self.signal_manager = SignalManager()
         self.ui = UserInterface(self.signal_manager, self.app)
-        self.ci = MockChatbot(self.signal_manager) if self.mode == "TEST" else ChatbotInterface(self.signal_manager)
+        self.ci = (
+            MockChatbot(self.signal_manager)
+            if self.mode == "TEST"
+            else ChatbotInterface(self.signal_manager)
+        )
         self.data_collector = ClientDataCollector(self.signal_manager)
         self.mediator_manager = MediatorManagementModule(self.signal_manager)
         self.network_handler = NetworkHandler()
-        self.background_handler = BackgroundTaskHandler(self.data_collector, self.network_handler, self.mediator_manager)
+        self.background_handler = BackgroundTaskHandler(
+            self.data_collector, self.network_handler, self.mediator_manager
+        )
         self.network_endpoint = "http://example.com/api"  # Placeholder endpoint
 
     def initialize(self):
         for component in self.get_components():
             logging.info(f"Initializing {component}...")
             component.initialize()
-        
+
         # Dependency injection
         self.network_handler.set_mock_mode(self.mode == "TEST")
         self.data_collector.set_network_handler(self.network_handler)
@@ -117,7 +126,7 @@ class Client(ISystemModule):
         self.ci.start()  # Assuming this can also be initiated in the main thread
         self.is_running = True
 
-    def start_background_modules(self): 
+    def start_background_modules(self):
         self.background_handler.start()  # Start background tasks in a QThread
 
     def stop(self):
@@ -141,6 +150,7 @@ class Client(ISystemModule):
 
     def status(self):
         return {component.status() for component in self.get_components()}
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
