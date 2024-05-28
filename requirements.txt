@@ -15,3 +15,5 @@ vulture
 pytest
 pytest-qt
 pytest-mock
+pylint
+debugpy

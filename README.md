@@ -10,6 +10,7 @@ chmod +x setup_deploy.sh
 ```bash
 ./setup_dev.sh  # For development setup
 ./setup_deploy.sh  # For deployment
+python3 -m src.backends.backend_setup.setup_logins
 ```
 These scripts are designed to be robust and provide clear logging throughout the setup process. Modify paths and names as needed to match your specific project structure and requirements.
 
@@ -112,6 +113,10 @@ Here are helpful tools and workflows to speed along the process.
 ```
 $$("main .group:nth-last-of-type(2) .items-start")[0].innerText
 ```
+### Woops, the undetectedd chromedriver says chrome unreachable
+
+Try deleting the selenium_profile folder inside this project. 
+
 
 ### Authors
 
