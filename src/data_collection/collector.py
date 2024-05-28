@@ -39,6 +39,12 @@ if TYPE_CHECKING:
     from src.signals.collector_signal_manager import CollectorSignalManager
 
 class Recipient(Enum):
+    """A class that represents the recipient of the data.
+    
+    Attributes:
+        MEDIATOR (str): The mediator recipient.
+        NETWORK (str): The network recipient.
+    """
     MEDIATOR = "mediator"
     NETWORK = "network"
 
@@ -153,7 +159,7 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
                 data_dict = data
             else:
                 raise ValueError("Unsupported data type for update")
-            
+
             updated_data = self.data_store.model_copy(update=data_dict)
             self.data_store = updated_data
             logging.info(f"Data in storage: {self.data_store}")
@@ -161,7 +167,7 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
         except (ValidationError, ValueError) as e:
             logging.warning(f"Failed to update data store: {e}")
             return False
-        
+
     def send_data(self, recipient: Recipient):
         """
         Send the current data store to the specified recipient.
