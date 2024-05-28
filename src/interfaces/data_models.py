@@ -8,6 +8,8 @@ class UserData(BaseModel):
     user_rating: int
     last_message: Optional[str] = None
     last_message_time: Optional[float] = None
+    last_response: Optional[str] = None
+    last_response_time: Optional[float] = None
 
 class ResponseModel(BaseModel):
     new_mediator: str
