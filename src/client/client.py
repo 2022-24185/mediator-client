@@ -1,6 +1,32 @@
+"""This module contains the main client class and related classes for 
+a mediator-client application.
+
+The Client class is the main entry point for the application. It manages 
+the initialization, starting, stopping, and configuration of various system 
+components such as the user interface, chatbot interface, data collector, 
+mediator manager, and network handler.
+
+The SignalManager class manages different signal managers for various components 
+of the client. It holds instances of GUISignalManager, CollectorSignalManager, 
+MediatorSignalManager, ChatSignalManager, and APISignalManager.
+
+The SignalHandler class handles signals and connects them to signal handlers. It 
+maintains a list of handlers and provides methods to add handlers and connect 
+signals.
+
+The BackgroundTaskHandler class is a QThread that handles background tasks in 
+the client application. It starts the data collector, network handler, and 
+mediator manager when the thread starts.
+
+This module also imports necessary modules and classes from PyQt5 and other 
+parts of the application. """
+
 import sys
+import logging
+from typing import List
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QThread
+from PyQt5.QtCore import QObject
 from src.interfaces.i_system_module import ISystemModule
 from src.user_interface.ui import UserInterface
 from src.data_collection.collector import ClientDataCollector
@@ -20,10 +46,7 @@ from src.signals.mediator_signal_handler import MediatorSignalHandler
 from src.signals.gui_signal_handler import GUISignalHandler
 from src.signals.client_signal_handler import ClientSignalHandler
 from src.user_interface.workers import *
-import logging
-from PyQt5.QtCore import QObject
 
-from typing import List
 
 
 class SignalManager(QObject):
@@ -123,7 +146,8 @@ class BackgroundTaskHandler(QThread):
 class Client(ISystemModule):
     """
     The Client class represents the main client module of the mediator-client application.
-    It manages the initialization, starting, stopping, and configuration of various system components.
+    It manages the initialization, starting, stopping, and configuration of various system 
+    components.
 
     Attributes:
         mode (str): The mode of the client. Can be "TEST" or None.
