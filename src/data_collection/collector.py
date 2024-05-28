@@ -1,5 +1,27 @@
-# src/data_collection/collector.py
+"""
+collector.py
 
+This module contains the ClientDataCollector class which is responsible 
+for collecting and managing client data. 
+
+The ClientDataCollector class inherits from ISystemModule, IDataCollector, 
+and ISerializable interfaces. It uses a SignalManager instance to manage 
+signals, a UserData instance to store client data, and a NetworkHandler 
+instance to handle network-related tasks. 
+
+The class provides methods to initialize, configure, start, stop, reset, 
+and get the status of the data collector. It also provides methods to get, 
+update, and send the collected data. The data can be serialized to a 
+dictionary and deserialized from a dictionary to a UserData object.
+
+Classes:
+    - Recipient: An enumeration that represents the recipient of the data.
+    - ClientDataCollector: A class that represents a client data collector.
+
+Exceptions:
+    - ValueError: Raised when an unsupported data type is provided for update 
+    or an unsupported recipient type is provided for sending data.
+"""
 import logging
 from typing import TYPE_CHECKING, Union
 from enum import Enum
@@ -22,6 +44,21 @@ class Recipient(Enum):
 
 
 class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
+    """
+    A class that represents a client data collector.
+
+    This class is responsible for collecting and managing client data.
+
+    Args:
+        signal_manager (SignalManager): The signal manager instance.
+
+    Attributes:
+        data_store (UserData): The data store for client data.
+        network_handler (NetworkHandler): The network handler instance.
+        signals (CollectorSignalManager): The signal manager for collector signals.
+        is_running (bool): A flag indicating whether the collector is running or not.
+    """
+
     def __init__(self, signal_manager: "SignalManager"):
         super().__init__()
         self.data_store = UserData(genome_id=0, time_since_startup=0.0, user_rating=0)
@@ -30,40 +67,83 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
         self.is_running = False
 
     def initialize(self):
+        """
+        Initialize the client data collector.
+
+        This method is called during the initialization of the collector.
+        """
         super().initialize()
         logging.info("Client Data Collector initialized")
 
     def set_network_handler(self, network_handler: "NetworkHandler"):
+        """
+        Set the network handler for the client data collector.
+
+        Args:
+            network_handler (NetworkHandler): The network handler instance.
+        """
         self.network_handler = network_handler
 
     def configure(self, config):
+        """
+        Configure the client data collector.
+
+        Args:
+            config: The configuration for the collector.
+        """
         super().configure(config)
         logging.info(f"Client Data Collector configured with {config}")
 
     def start(self):
+        """
+        Start the client data collector.
+        """
         self._change_running_state(True, "started")
 
     def stop(self):
+        """
+        Stop the client data collector.
+        """
         self._change_running_state(False, "stopped")
 
     def reset(self):
+        """
+        Reset the client data collector.
+
+        This method resets the data store and clears any collected data.
+        """
         super().reset()
         self.data_store = UserData(genome_id=0, time_since_startup=0.0, user_rating=0)
         logging.info("Client Data Collector reset")
 
     def status(self):
+        """
+        Get the status of the client data collector.
+
+        Returns:
+            str: The status of the collector.
+        """
         return super().status()
 
-    def collect_data_for_mediator(self):
-        data = self.get_data()
-        data_for_transfer = self.to_dict(data)
-        logging.info("About to emit data ready for mediator")
-        self.signals.data_ready_for_mediator.emit(data_for_transfer)
-
     def get_data(self) -> UserData:
+        """
+        Get the current client data.
+
+        Returns:
+            UserData: The current client data.
+        """
         return self.data_store
 
     def update(self, data: Union[dict, BaseModel]):
+        """
+        Update the client data store with new data.
+
+        Args:
+            data (Union[dict, BaseModel]): The new data to update the store with.
+
+        Returns:
+            bool: True if the update was successful, False otherwise.
+        """
         super().update()
         logging.info(f"Collecting data: {data}")
         try:
@@ -87,10 +167,8 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
         Send the current data store to the specified recipient.
 
         Args:
-            data (UserData): The data to be sent.
             recipient (Recipient): The recipient type, either MEDIATOR or NETWORK.
         """
-        
         if recipient == Recipient.MEDIATOR:
             user_data_dict = self.to_dict(self.data_store)
             self.signals.data_ready_for_mediator.emit(user_data_dict)
@@ -100,33 +178,50 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
         else:
             raise ValueError("Unsupported recipient type")
 
-    # def send_data(self):
-    #     serialized_data = self.to_dict(self.data_store)
-    #     self.network_handler.send_data(serialized_data)
-
-    # def request_mediator_with_stored_data(self):
-    #     logging.info("COLLECTOR FETCHING DATA")
-    #     self._ensure_data_store_type()
-    #     response = self.network_handler.request_mediator_swap(self.data_store)
-    #     self._handle_mediator_response(response)
-
     def to_dict(self, data: BaseModel) -> dict:
+        """
+        Serialize the given data object to a dictionary.
+
+        Args:
+            data (BaseModel): The data object to serialize.
+
+        Returns:
+            dict: The serialized data as a dictionary.
+        """
         logging.info("Serializing data...")
         return data.model_dump()
 
     def to_model(self, dictionary: dict) -> UserData:
+        """
+        Deserialize the given dictionary to a UserData object.
+
+        Args:
+            dictionary (dict): The dictionary to deserialize.
+
+        Returns:
+            UserData: The deserialized UserData object.
+        """
         logging.info("Deserializing data...")
         return UserData.model_validate(dictionary)
 
     def _change_running_state(self, state: bool, action: str):
+        """
+        Change the running state of the client data collector.
+
+        Args:
+            state (bool): The new running state.
+            action (str): The action that triggered the state change.
+        """
         self.is_running = state
         logging.info(f"Client Data Collector {action}")
 
-    # def _ensure_data_store_type(self):
-    #     if not isinstance(self.data_store, UserData):
-    #         raise ValueError("Data store is not of type UserData")
-
     def _handle_mediator_response(self, response):
+        """
+        Handle the response from the mediator.
+
+        Args:
+            response: The response from the mediator.
+        """
         if response.status_code == 200:
             logging.info("FETCHED IN COLLECTOR")
             logging.info("About to emit new mediator fetched")
