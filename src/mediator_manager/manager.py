@@ -1,10 +1,9 @@
 # src/mediator_management/manager.py
 
-import logging, time, pickle, base64, neat
+import logging, time, pickle, base64
 from src.interfaces.i_mediator_handler import IMediatorHandler
 from src.interfaces.i_system_module import ISystemModule
-from PyQt5.QtCore import QThread, QTimer, pyqtSignal, QObject
-import nltk
+from PyQt5.QtCore import QThread, QTimer, pyqtSignal
 from nltk.sentiment import SentimentIntensityAnalyzer
 import random
 import numpy as np
@@ -17,28 +16,34 @@ if TYPE_CHECKING:
 
 
 class MediatorTimerThread(QThread):
-    def __init__(self, signal_manager, interval=10000, parent=None):
+    update_user_model = pyqtSignal()
+    stop_signal = pyqtSignal()
+
+    def __init__(self, interval=10000, parent=None):
         super().__init__(parent)
-        self.signal_manager = signal_manager
         self.interval = interval
         self.timer = None
+        logging.info("\033[96mTimer in mediator initiated\033[0m")
 
     def run(self):
+        logging.info("\033[96mRunning timer in mediator\033[0m")
         self.timer = QTimer()
         self.timer.setInterval(self.interval)
         self.timer.timeout.connect(self.trigger_mediator_intervention)
+        self.stop_signal.connect(self.timer.stop)
         self.timer.start()
         self.exec_()  # Enter the event loop
 
     def stop(self):
         if self.timer is not None:
-            self.timer.stop()
+            logging.info("\033[96mAbout to emit stop signal\033[0m")
+            self.stop_signal.emit()
         self.quit()
         self.wait()
 
     def trigger_mediator_intervention(self):
-        logging.info("Triggering mediator intervention")
-        self.signal_manager.request_mediator_intervention.emit()
+        logging.info("\033[96mAbout to emit update user model\033[0m")
+        self.update_user_model.emit()
 
 class Mediator(): 
     def __init__(self, genome_id, network):
@@ -66,17 +71,18 @@ class Mediator():
 class MediatorManagementModule(ISystemModule, IMediatorHandler):
     def __init__(self, signal_manager: 'SignalManager'):
         super().__init__()  # Initialize base class properties
-        self.signal_manager = signal_manager
-        self.timer_thread = MediatorTimerThread(self.signal_manager)
+        self.signals = signal_manager.mediator_signals
+        self.timer_thread = MediatorTimerThread()
         self.sentiment_analyzer = SentimentIntensityAnalyzer()  # Initialize VADER
         self.current_mediator = None
         self.input_history = []
         self.unanswered_count = 0  # Initialize the count of unanswered messages
+        self.is_chatbot_line_free = False
 
     # Implement abstract methods from ISystemModule
     def initialize(self):
-        super().initialize()  # Optionally call base implementation if defined
-        self.load_mediator()
+        super().initialize() 
+        self.timer_thread.update_user_model.connect(self.update_mediator)
         logging.info("Mediator Management Module initialized")
 
     def configure(self, config):
@@ -111,10 +117,17 @@ class MediatorManagementModule(ISystemModule, IMediatorHandler):
         return super().status()  # Return the module's status
 
     # IMediatorHandler specific methods
+    def set_line_status(self, is_free):
+        self.is_chatbot_line_free = is_free
+
+    def get_line_status(self): 
+        return self.is_chatbot_line_free
 
     def load_mediator(self):
-        logging.error("Requesting new mediator...")
-        self.signal_manager.request_new_mediator.emit()
+        logging.info("Requesting new mediator...")
+        #self.signal_manager.request_new_mediator.emit()
+        logging.info("\033[96mAbout to emit mediator requested\033[0m")
+        self.signals.mediator_requested.emit({}) 
 
     def attach_mediator(self, response : 'ResponseModel'):
         logging.warning("ATTACHING MEDIATOR")
@@ -133,11 +146,13 @@ class MediatorManagementModule(ISystemModule, IMediatorHandler):
             assert False, "new_mediator is not a valid serialized object"
         logging.info(f"Mediator unpacked with id: {genome_id}")
         self.current_mediator = Mediator(genome_id, deserialized_network)
-        logging.info(f"Mediator attached: {genome_id}. Emitting id...")
-        self.signal_manager.new_mediator_assigned.emit(genome_id)
+        logging.info(f"Mediator attached: {genome_id}.")
+        logging.info("\033[96mAbout to emit new mediator assigned\033[0m")
+        self.signals.new_mediator_assigned.emit({'genome_id': genome_id})
 
-    def update_mediator(self, update_info):
-        logging.info(f"Updating mediator with {update_info}...")
+    def update_mediator(self):
+        logging.info("\033[96mAbout to emit mediator update requested\033[0m")
+        self.signals.mediator_data_requested.emit()
 
     def update_unanswered_count(self, reset=False):
         if reset:
@@ -194,9 +209,8 @@ class MediatorManagementModule(ISystemModule, IMediatorHandler):
         logging.info(f"Biggest output: {biggest_output}, index: {index}")
         message, is_secret = self.get_message(index)
         if biggest_output >= 0.5:
-            return message, is_secret
-        else: 
-            return None, False
+            logging.info("\033[96mAbout to emit mediator msg ready\033[0m")
+            self.signals.mediator_msg_ready.emit(message, is_secret)
     
     def get_message(self, index):
         calm_messages = [

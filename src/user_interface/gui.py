@@ -25,7 +25,7 @@ class ChatbotGUI(QWidget):
         super().__init__()
         self.app = app
         self.init_ui()
-        self.signal_manager = signal_manager
+        self.signals = signal_manager.gui_signals
         self.start_time = time.time()  # Initialize start time
         #self.message_submitted_gui.connect(self.display_response)
         logging.info("GUI initialized")
@@ -61,7 +61,8 @@ class ChatbotGUI(QWidget):
 
         self.setLayout(self.layout)
 
-    def append_message(self, text, sender):
+    def _append_message(self, text, sender):
+        logging.info("Appending message in _appending_message...")
         message_widget = ChatMessageWidget(text, sender, self)
         list_item = QListWidgetItem(self.message_list)
         list_item.setSizeHint(message_widget.sizeHint())
@@ -70,26 +71,35 @@ class ChatbotGUI(QWidget):
         self.message_list.scrollToBottom()  # Scroll to the latest message
 
     def submit_message(self):
+        """Send message to chatbot and display it in the chat window"""
+        logging.info("MESSAGE SUBMITTED")
         message = self.input_field.toPlainText().strip()
         if message:
             self.display_input_message(message)
             self.input_field.clear()
-            self.signal_manager.request_message_submission.emit(message)
+            logging.info("\033[96mAbout to emit message submitted\033[0m")
+            self.signals.message_submitted.emit(message)
 
     def submit_rating(self, rating):
+        """Submit rating to the data collector."""
         elapsed_time = time.time() - self.start_time
         data = {
             'user_rating': rating, 
             'time_since_startup': elapsed_time
         }
-        self.signal_manager.request_data_submission.emit(data)
+        logging.info("\033[96mAbout to emit rating changed\033[0m")
+        self.signals.rating_changed.emit(data)
 
-    def display_response(self, response):
-        self.append_message(response, "BARD")
-        self.signal_manager.chatbot_response_displayed.emit(True)
+    def display_response(self, response: dict):
+        """Display chatbot response in the chat window."""
+        logging.info("Appending response...")
+        response 
+        self._append_message(response, "BARD")
+        #logging.info("\033[96mAbout to emit chatbot response displayed\033[0m")
+        #self.signals..emit(True)
 
     def display_input_message(self, message):
-        self.append_message(message, "You")
+        self._append_message(message, "You")
 
     def make_rating_callback(self, rating):
         def callback():
@@ -98,13 +108,15 @@ class ChatbotGUI(QWidget):
     
     def request_new_mediator(self):
         # TODO: move responsibility for time keeping to data collector
+        logging.info("\033[31m BUTTON CLICKED \033[0m")
         time_elapsed = time.time() - self.start_time
-        self.signal_manager.request_new_mediator.emit()
+        logging.info("\033[96mAbout to emit new mediator requested\033[0m")
+        self.signals.new_mediator_requested.emit({"time_since_startup": time_elapsed})
 
     def _show_waiting_message(self):
         logging.info("Waiting for new agent to be available")
         self.message_list.clear()
-        self.append_message("Requesting new agent, please wait...", "System")
+        self._append_message("Requesting new agent, please wait...", "System")
         self._simulate_agent_setup_delay()
 
     def _simulate_agent_setup_delay(self):
@@ -121,16 +133,10 @@ class ChatbotGUI(QWidget):
         else:
             logging.warning("Data update failed before resetting interface")
 
-    def reset_interface(self):
-        logging.info("Interface resetting")
-        #self.signal_manager.request_data_aggregation.emit()
-
     def finalize_reset(self):
-        logging.info("Interface resetting")
-        self.message_list.clear()
-        self.rating_system.set_rating(0)
-        self.start_time = time.time()
-        self.signal_manager.request_message_display.emit("New agent is available to chat.")
+        logging.info("\033[96mAbout to emit request message display\033[0m")
+        self.display_response("New agent is available to chat")
+        #self.signal_manager.request_message_display.emit("New agent is available to chat.")
         self.app.processEvents()
 
     def reset_interface(self):
@@ -138,8 +144,12 @@ class ChatbotGUI(QWidget):
         self.message_list.clear()
         self.rating_system.set_rating(0)
         self.start_time = time.time()  # Reset start time
+        self.finalize_reset()
 
     def closeEvent(self, event):
+        logging.info("Client GUI closing")
+        logging.info("\033[96mAbout to emit client stop\033[0m")
+        self.signals.client_stop.emit()
         event.accept()
 
 # # Example usage of the ChatbotGUI

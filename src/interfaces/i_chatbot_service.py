@@ -18,7 +18,7 @@ class IChatbotService(ABC):
         pass
 
     @abstractmethod
-    def send_message(self, message: str) -> str:
+    def add_message_to_queue(self, message: str) -> str:
         """
         Sends a message to the chatbot and returns the response.
         :param message: str - The message to send to the chatbot.

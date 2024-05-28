@@ -5,7 +5,7 @@ class ChatSignalManager(BaseSignalManager):
     """ Deals with outgoing signals for the Chatbot API """
     mediator_msg_received = pyqtSignal(str, bool) 
     secret_chatbot_msg_received = pyqtSignal(dict) #msg as data
-    dialogue_user_msg_received = pyqtSignal()
+    dialogue_user_msg_received = pyqtSignal(dict)
     dialogue_chatbot_msg_received = pyqtSignal(dict) #msg as data
     first_message_submitted = pyqtSignal()
     chatbot_error = pyqtSignal(str)

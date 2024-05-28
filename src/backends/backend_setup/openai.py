@@ -74,6 +74,7 @@ class ElementLocatorWorker(QThread):
         self.is_secret = False
         self._parent = _parent
         logging.info("\033[94mElementLocatorWorker INITIALIZED\033[0m")
+        logging.info(f"\033[94mlocator: {locator}\033[0m")
 
     def run(self):
         #debugpy.debug_this_thread()
@@ -416,6 +417,7 @@ class ChatGPT(QObject, SeleniumService):
         """Handle recovery from errors by refreshing the chat interface."""
         self.worker.refresh_chat()
 
+    @pyqtSlot(str, str)
     def handle_error(self, error_type, message):
         """Handle different types of errors with appropriate UI feedback or recovery actions."""
         if error_type == "WebDriverException":

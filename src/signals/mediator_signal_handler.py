@@ -31,7 +31,8 @@ class MediatorSignalHandler(BaseSignalHandler):
     @pyqtSlot(dict)
     def handle_data_received(self, data : dict):
         logging.info("\033[90mMediatorSignalHandler handle data received\033[0m")
-        mediator_data = UserData.model_validate(mediator_data)
+        mediator_data = UserData.model_validate(data)
+        logging.info(f"Data received: {str(mediator_data.model_dump_json)}")
         self.manager.process_input(mediator_data)
 
     @pyqtSlot(dict)

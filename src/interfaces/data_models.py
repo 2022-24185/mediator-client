@@ -14,3 +14,12 @@ class UserData(BaseModel):
 class ResponseModel(BaseModel):
     new_mediator: str
     message: str
+
+class ReplyData(BaseModel):
+    last_response: str
+    last_response_time: float
+    is_secret: bool
+
+class MessageData(BaseModel): 
+    last_message: str
+    last_message_time: float
