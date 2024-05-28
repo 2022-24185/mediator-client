@@ -31,7 +31,7 @@ from typing import Callable
 def init_service(Service: Callable):
     global reusable_driver, open_services
     if reusable_driver is None:
-        service = Service(path=CHROME_PATH, driver_version=CHROME_VER, signal_holder=None)
+        service = Service(path=CHROME_PATH, driver_version=CHROME_VER, signal_manager=None)
         reusable_driver = service.get_driver()
         open_services.append(service)
     else:

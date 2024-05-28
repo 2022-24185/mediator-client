@@ -3,6 +3,7 @@
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel, QVBoxLayout, QTextEdit
 from PyQt5.QtCore import pyqtSignal, Qt, QSize
 from typing import List
+import logging
 
 class StarRatingWidget(QWidget):
     rating_changed: pyqtSignal = pyqtSignal(int)
@@ -36,7 +37,8 @@ class StarRatingWidget(QWidget):
             else:
                 star.setText("☆")
                 star.setStyleSheet("font-size: 24px; color: gray;")  # Gray color for unselected stars
-        self.rating_changed.emit(rating)
+        logging.info("\033[96mAbout to emit rating changed from widget\033[0m")
+        self.rating_changed.emit({"rating": rating}) #int, send_data_to_server? 
 
 class ChatMessageWidget(QWidget):
     def __init__(self, text, sender, parent=None):
@@ -84,7 +86,9 @@ class InputField(QTextEdit):
     enter_pressed = pyqtSignal()
 
     def keyPressEvent(self, event):
+
         if event.key() == Qt.Key_Return and not event.modifiers() & Qt.ShiftModifier:
+            logging.info("\033[96mAbout to emit enter pressed\033[0m")
             self.enter_pressed.emit()
         else:
             super().keyPressEvent(event)

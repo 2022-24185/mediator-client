@@ -53,7 +53,7 @@ class UserInterface(ISystemModule, IEventHandler):
 
     def subscribe_to_event(self, event_type, handler):
         self.handlers[event_type].append(handler)
-        logging.info(f"Subscribed to event {event_type}")
+        #logging.info(f"Subscribed to event {event_type}")
 
     def unsubscribe_from_event(self, event_type, handler):
         if handler in self.handlers[event_type]:
