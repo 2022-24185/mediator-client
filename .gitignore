@@ -1,4 +1,7 @@
 selenium_profile
-__pycache__
 imbard.*
 mediator_client_env
+.vscode/*
+.pylintrc
+cython_constraint.txt
+*.pyc
