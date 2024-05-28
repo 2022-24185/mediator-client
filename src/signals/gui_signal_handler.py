@@ -1,8 +1,7 @@
 from PyQt5.QtCore import pyqtSlot
 from src.interfaces.i_signal_handler import BaseSignalHandler
-from src.user_interface.workers import SendMessageToChatbotWorker
 from src.interfaces.data_models import ReplyData
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 import logging
 
 if TYPE_CHECKING:
@@ -23,6 +22,7 @@ class GUISignalHandler(BaseSignalHandler):
     def connect_signals(self):
         self.chatbot_signals.dialogue_chatbot_msg_received.connect(self.handle_chatbot_msg_received)
 
+    @pyqtSlot(dict)
     def handle_chatbot_msg_received(self, reply_data: dict):
         logging.info(f"GUISignalHandler handle chatbot msg received")
         data = ReplyData.model_validate(reply_data)

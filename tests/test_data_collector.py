@@ -19,7 +19,7 @@ class TestDataCollector:
 
     def test_serialize_deserialize(self):
         data = [{"event": "click", "details": {"x": 100, "y": 200}}]
-        serialized = self.collector.serialize(data)
+        serialized = self.collector.to_dict(data)
         assert isinstance(serialized, str)
-        deserialized = self.collector.deserialize(serialized)
+        deserialized = self.collector.to_model(serialized)
         assert deserialized == data
