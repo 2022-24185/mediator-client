@@ -27,6 +27,17 @@ from typing import List
 
 
 class SignalManager(QObject):
+    """
+    Manages different signal managers for various components of the client.
+
+    Attributes:
+        gui_signals (GUISignalManager): Signal manager for GUI-related signals.
+        collector_signals (CollectorSignalManager): Signal manager for collector-related signals.
+        mediator_signals (MediatorSignalManager): Signal manager for mediator-related signals.
+        chat_signals (ChatSignalManager): Signal manager for chat-related signals.
+        api_signals (APISignalManager): Signal manager for API-related signals.
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self.gui_signals = GUISignalManager()
@@ -36,6 +47,12 @@ class SignalManager(QObject):
         self.api_signals = APISignalManager()
 
     def get_signals(self) -> list[BaseSignalManager]:
+        """
+        Returns a list of all signal managers.
+
+        Returns:
+            list[BaseSignalManager]: A list of signal managers.
+        """
         return [
             self.chat_signals,
             self.gui_signals,
@@ -46,21 +63,44 @@ class SignalManager(QObject):
 
 
 class SignalHandler(QObject):
+    """
+    Handles signals and connects them to signal handlers.
+    """
+
     def __init__(self, signal_manager: "SignalManager"):
         super().__init__()
         self.signal_manager = signal_manager
         self.handlers: list[BaseSignalHandler] = []
 
     def add_handler(self, handler: BaseSignalHandler, main_class: ISystemModule):
+        """
+        Adds a signal handler to the list of handlers.
+
+        Args:
+            handler (BaseSignalHandler): The signal handler to add.
+            main_class (ISystemModule): The main class associated with the handler.
+        """
         self.handlers.append(handler(self.signal_manager, main_class))
 
     def connect_signals(self):
+        """
+        Connects the signals to their respective signal handlers.
+        """
         # not needed: this happens in the base signal handler constructor
         for handler in self.handlers:
             handler.connect_signals()
 
 
 class BackgroundTaskHandler(QThread):
+    """
+    A class that handles background tasks in the client application.
+
+    Args:
+        data_collector (DataCollector): An instance of the DataCollector class.
+        network_handler (NetworkHandler): An instance of the NetworkHandler class.
+        mediator_manager (MediatorManager): An instance of the MediatorManager class.
+    """
+
     def __init__(self, data_collector, network_handler, mediator_manager):
         super().__init__()
         self.data_collector = data_collector
@@ -68,6 +108,12 @@ class BackgroundTaskHandler(QThread):
         self.mediator_manager = mediator_manager
 
     def run(self):
+        """
+        Starts the background tasks.
+
+        This method is automatically called when the thread starts.
+        It starts the data collector, network handler, and mediator manager.
+        """
         logging.info("Background tasks starting...")
         self.data_collector.start()
         self.network_handler.start()
@@ -75,6 +121,35 @@ class BackgroundTaskHandler(QThread):
 
 
 class Client(ISystemModule):
+    """
+    The Client class represents the main client module of the mediator-client application.
+    It manages the initialization, starting, stopping, and configuration of various system components.
+
+    Attributes:
+        mode (str): The mode of the client. Can be "TEST" or None.
+        app (QApplication): The QApplication instance for the GUI.
+        signal_manager (SignalManager): The signal manager for handling signals.
+        ui (UserInterface): The user interface module.
+        ci (ChatbotInterface): The chatbot interface module.
+        data_collector (ClientDataCollector): The data collector module.
+        mediator_manager (MediatorManagementModule): The mediator management module.
+        network_handler (NetworkHandler): The network handler module.
+        background_handler (BackgroundTaskHandler): The background task handler module.
+        network_endpoint (str): The endpoint for network communication.
+
+    Methods:
+        initialize(): Initializes the client and its components.
+        get_components(): Returns a list of all the system components.
+        start(): Starts the client by starting the GUI and chatbot interface.
+        start_background_modules(): Starts the background modules in a separate thread.
+        stop(): Stops the client by stopping all the components.
+        configure(config: dict): Configures the client with the given configuration.
+        reset(): Resets all the components.
+        update(): Updates all the components.
+        status(): Returns the status of all the components.
+
+    """
+
     def __init__(self):
         super().__init__()
         self.mode = None  # "TEST"
@@ -95,6 +170,9 @@ class Client(ISystemModule):
         self.network_endpoint = "http://example.com/api"  # Placeholder endpoint
 
     def initialize(self):
+        """
+        Initializes the client and its components.
+        """
         for component in self.get_components():
             logging.info(f"Initializing {component}...")
             component.initialize()
@@ -112,6 +190,12 @@ class Client(ISystemModule):
         # self.signal_handler.connect_signals() # not needed, happens in the base constructors
 
     def get_components(self) -> List[ISystemModule]:
+        """
+        Returns a list of all the system components.
+
+        Returns:
+            List[ISystemModule]: A list of system components.
+        """
         return [
             self.ui,
             self.ci,
@@ -121,15 +205,24 @@ class Client(ISystemModule):
         ]
 
     def start(self):
+        """
+        Starts the client by starting the GUI and chatbot interface.
+        """
         logging.info("Client is starting...")
         self.ui.start()  # Start the GUI in the main thread
         self.ci.start()  # Assuming this can also be initiated in the main thread
         self.is_running = True
 
     def start_background_modules(self):
-        self.background_handler.start()  # Start background tasks in a QThread
+        """
+        Starts the background modules in a separate thread.
+        """
+        self.background_handler.start()
 
     def stop(self):
+        """
+        Stops the client by stopping all the components.
+        """
         logging.info("Client is stopping...")
         self.background_handler.quit()
         self.background_handler.wait()
@@ -138,17 +231,38 @@ class Client(ISystemModule):
         self.is_running = False
 
     def configure(self, config: dict):
+        """
+        Configures the client with the given configuration.
+
+        Args:
+            config (dict): The configuration dictionary.
+
+        Returns:
+            Any: The result of the configuration process.
+        """
         return super().configure(config)
 
     def reset(self):
+        """
+        Resets all the components.
+        """
         for component in self.get_components():
             component.reset()
 
     def update(self):
+        """
+        Updates all the components.
+        """
         for component in self.get_components():
             component.update()
 
     def status(self):
+        """
+        Returns the status of all the components.
+
+        Returns:
+            dict: The status of all the components.
+        """
         return {component.status() for component in self.get_components()}
 
 
