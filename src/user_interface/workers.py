@@ -1,7 +1,7 @@
 # src/user_interface/workers.py
-from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot, QTimer, QEventLoop
+from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
 import logging, time, queue
-from src.interfaces.data_models import UserData, ResponseModel
+from src.interfaces.data_models import UserData, MediatorData
 import debugpy
 
 from typing import TYPE_CHECKING
@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from src.mediator_manager.manager import MediatorManagementModule
     from src.client.client import SignalManager
-    from src.backends.backend_setup.openai import ChatGPT
-    from src.backends.backend_setup.google import Bard
     from src.chatbot_interface.chatbot import ChatbotInterface
     from src.data_collection.collector import ClientDataCollector
 
@@ -105,23 +103,6 @@ class ProcessNextMessageInQueueWorker(QThread):
         self.chatbot._send_message(self.message)
         self.finished.connect(self.cleanup)
 
-    # def wait_for_bard(self):
-    #     logging.info("Waiting for Bard to be ready...")
-    #     loop = QEventLoop()
-    #     check_interval = 500  # Check every 1000 milliseconds (1 second)
-
-    #     def check_ready():
-    #         if self.bard.is_ready_for_next_message():
-    #             loop.quit()
-
-    #     timer = QTimer()
-    #     timer.timeout.connect(check_ready)
-    #     timer.start(check_interval)
-
-    #     loop.exec_()  # Block here until loop.quit() is called
-    #     timer.stop()
-    #     logging.info("Bard is now ready.")
-
     def cleanup(self):
         logging.info("ProcessNextMessageInQueueWorker cleanup")
         self.quit()
@@ -157,12 +138,11 @@ class MediatorSwitchWorker(QThread):
         super().__init__()
         self.signal_manager : 'SignalManager' = signal_manager # type: ignore
         self.mediator_manager : 'MediatorManagementModule' = mediator_manager
-        self.new_mediator_response = ResponseModel.model_validate(new_mediator_response)
+        self.new_mediator_response = MediatorData.model_validate(new_mediator_response)
         logging.info(f"Mediator switch worker initialized with {self.new_mediator_response.message}"[:50])
 
     def run(self):
         #debugpy.debug_this_thread()
-        # process the new mediator
         logging.info("\033[91mMediator switch started\033[0m")
         self.mediator_manager.attach_mediator(self.new_mediator_response)
 
@@ -185,12 +165,9 @@ class MediatorProcessingWorker(QThread):
     def run(self):
         #debugpy.debug_this_thread()
         logging.info("\033[91mMediator processing started\033[0m")
-        # Fetch latest data
         if self.data:
-            # Process data with the mediator
             response, is_secret = self.mediator_manager.process_input(self.data)
             logging.info(f"Mediator processing complete: {response}, {is_secret}")
-            # Send the response to the chatbot
             if response: 
                 logging.info("\033[98mAbout to emit mediator msg ready\033[0m")
                 self.signals.mediator_msg_ready.emit(response, is_secret)

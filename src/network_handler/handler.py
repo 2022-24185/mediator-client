@@ -5,7 +5,7 @@ import json
 import requests
 from src.interfaces.i_network_handler import INetworkHandler
 from src.interfaces.i_system_module import ISystemModule
-from src.interfaces.data_models import UserData, ResponseModel
+from src.interfaces.data_models import UserData, MediatorData
 
 from requests.models import Response
 

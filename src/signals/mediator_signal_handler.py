@@ -1,6 +1,6 @@
 from PyQt5.QtCore import pyqtSlot
 from src.interfaces.i_signal_handler import BaseSignalHandler
-from src.interfaces.data_models import UserData, ResponseModel
+from src.interfaces.data_models import UserData, MediatorData
 from typing import TYPE_CHECKING
 import logging
 
@@ -38,5 +38,5 @@ class MediatorSignalHandler(BaseSignalHandler):
     @pyqtSlot(dict)
     def handle_new_mediator_fetched(self, mediator : dict):
         logging.info("\033[90mMediatorSignalHandler handle new mediator fetched\033[0m")
-        mediator_data = ResponseModel.model_validate(mediator)
+        mediator_data = MediatorData.model_validate(mediator)
         self.manager.attach_mediator(mediator_data)

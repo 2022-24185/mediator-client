@@ -7,7 +7,7 @@ from PyQt5.QtCore import QThread, QTimer, pyqtSignal
 from nltk.sentiment import SentimentIntensityAnalyzer
 import random
 import numpy as np
-from src.interfaces.data_models import UserData, ResponseModel
+from src.interfaces.data_models import UserData, MediatorData
 
 from typing import TYPE_CHECKING
 
@@ -129,7 +129,7 @@ class MediatorManagementModule(ISystemModule, IMediatorHandler):
         logging.info("\033[96mAbout to emit mediator requested\033[0m")
         self.signals.mediator_requested.emit({}) 
 
-    def attach_mediator(self, response : 'ResponseModel'):
+    def attach_mediator(self, response : 'MediatorData'):
         logging.warning("ATTACHING MEDIATOR")
         if not response.new_mediator:
             logging.info("Response does not contain new_mediator")

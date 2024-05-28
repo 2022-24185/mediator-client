@@ -11,7 +11,7 @@ class UserData(BaseModel):
     last_response: Optional[str] = None
     last_response_time: Optional[float] = None
 
-class ResponseModel(BaseModel):
+class MediatorData(BaseModel):
     new_mediator: str
     message: str
 
