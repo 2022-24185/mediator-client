@@ -118,7 +118,7 @@ class AgentDataUpdateWorker(QThread):
     def run(self):
         #debugpy.debug_this_thread()
         logging.info(f"\033[91mAgent Update Worker started with data {self.data}\033[0m")
-        success = self.collector.update_database(self.data)
+        success = self.collector.update(self.data)
         self.handle_external_update_complete(success)
         logging.info("Worker finished")
 

@@ -2,6 +2,7 @@
 
 import logging
 from typing import TYPE_CHECKING, Union
+from enum import Enum
 
 from pydantic import BaseModel, ValidationError
 
@@ -14,6 +15,10 @@ if TYPE_CHECKING:
     from src.network_handler.handler import NetworkHandler
     from src.client.client import SignalManager
     from src.signals.collector_signal_manager import CollectorSignalManager
+
+class Recipient(Enum):
+    MEDIATOR = "mediator"
+    NETWORK = "network"
 
 
 class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
@@ -31,9 +36,6 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
     def set_network_handler(self, network_handler: "NetworkHandler"):
         self.network_handler = network_handler
 
-    def set_signal_holder(self, signal_holder: "SignalManager"):
-        self.signal_holder = signal_holder
-
     def configure(self, config):
         super().configure(config)
         logging.info(f"Client Data Collector configured with {config}")
@@ -49,10 +51,6 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
         self.data_store = UserData(genome_id=0, time_since_startup=0.0, user_rating=0)
         logging.info("Client Data Collector reset")
 
-    def update(self):
-        super().update()
-        logging.info("Client Data Collector updated")
-
     def status(self):
         return super().status()
 
@@ -65,7 +63,8 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
     def get_data(self) -> UserData:
         return self.data_store
 
-    def update_database(self, data: Union[dict, BaseModel]):
+    def update(self, data: Union[dict, BaseModel]):
+        super().update()
         logging.info(f"Collecting data: {data}")
         try:
             if isinstance(data, BaseModel):
@@ -82,16 +81,34 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
         except (ValidationError, ValueError) as e:
             logging.warning(f"Failed to update data store: {e}")
             return False
+        
+    def send_data(self, recipient: Recipient):
+        """
+        Send the current data store to the specified recipient.
 
-    def send_data(self):
-        serialized_data = self.to_dict(self.data_store)
-        self.network_handler.send_data(serialized_data)
+        Args:
+            data (UserData): The data to be sent.
+            recipient (Recipient): The recipient type, either MEDIATOR or NETWORK.
+        """
+        
+        if recipient == Recipient.MEDIATOR:
+            user_data_dict = self.to_dict(self.data_store)
+            self.signals.data_ready_for_mediator.emit(user_data_dict)
+        elif recipient == Recipient.NETWORK:
+            response = self.network_handler.request_mediator_swap(self.data_store)
+            self._handle_mediator_response(response)
+        else:
+            raise ValueError("Unsupported recipient type")
 
-    def request_mediator_with_stored_data(self):
-        logging.info("COLLECTOR FETCHING DATA")
-        self._ensure_data_store_type()
-        response = self.network_handler.request_mediator_swap(self.data_store)
-        self._handle_mediator_response(response)
+    # def send_data(self):
+    #     serialized_data = self.to_dict(self.data_store)
+    #     self.network_handler.send_data(serialized_data)
+
+    # def request_mediator_with_stored_data(self):
+    #     logging.info("COLLECTOR FETCHING DATA")
+    #     self._ensure_data_store_type()
+    #     response = self.network_handler.request_mediator_swap(self.data_store)
+    #     self._handle_mediator_response(response)
 
     def to_dict(self, data: BaseModel) -> dict:
         logging.info("Serializing data...")
@@ -105,9 +122,9 @@ class ClientDataCollector(ISystemModule, IDataCollector, ISerializable):
         self.is_running = state
         logging.info(f"Client Data Collector {action}")
 
-    def _ensure_data_store_type(self):
-        if not isinstance(self.data_store, UserData):
-            raise ValueError("Data store is not of type UserData")
+    # def _ensure_data_store_type(self):
+    #     if not isinstance(self.data_store, UserData):
+    #         raise ValueError("Data store is not of type UserData")
 
     def _handle_mediator_response(self, response):
         if response.status_code == 200:

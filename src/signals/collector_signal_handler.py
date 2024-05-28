@@ -1,6 +1,7 @@
 from PyQt5.QtCore import pyqtSlot
 from functools import partial
 from src.interfaces.i_signal_handler import BaseSignalHandler
+from src.data_collection.collector import Recipient
 from typing import TYPE_CHECKING, Optional
 import logging
 
@@ -36,12 +37,12 @@ class CollectorSignalHandler(BaseSignalHandler):
         # remove entry "is_secret" from dict if it exists
         #if "is_secret" in data: 
             #data.pop("is_secret")
-        self.collector.update_database(data)
+        self.collector.update(data)
         if request_mediator: 
-            self.collector.request_mediator_with_stored_data()
+            self.collector.send_data(Recipient.NETWORK)
 
     @pyqtSlot()
     def handle_data_requested(self):
         logging.info("\033[90mCollectorSignalHandler handle data requested\033[0m")
-        self.collector.collect_data_for_mediator()
+        self.collector.send_data(Recipient.MEDIATOR)
     
