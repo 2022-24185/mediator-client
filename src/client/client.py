@@ -32,7 +32,8 @@ from src.user_interface.ui import UserInterface
 from src.data_collection.collector import ClientDataCollector
 from src.mediator_manager.manager import MediatorManagementModule
 from src.network_handler.handler import NetworkHandler
-from src.chatbot_interface.chatbot import ChatbotInterface, MockChatbot
+from src.chatbot_interface.chatbot import ChatbotInterface
+from src.chatbot_interface.mock_chatbot import MockChatbot
 from src.signals.chat_signal_manager import ChatSignalManager
 from src.signals.mediator_signal_manager import MediatorSignalManager
 from src.signals.gui_signal_manager import GUISignalManager

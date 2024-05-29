@@ -43,7 +43,6 @@ class SendMessageToChatbotWorker(QThread):
         self.quit()
 
 class MessageQueue(queue.Queue):
-    message_processed = pyqtSignal(str)
 
     def __init__(self, chatbot: 'ChatbotInterface'):
         super().__init__()
@@ -61,18 +60,6 @@ class MessageQueue(queue.Queue):
         logging.info(f"Adding message to queue: {message[:30]}")
         self.put((message, message_type))
         self.chatbot.try_process_next_message_in_queue()
-
-    # def add_message(self, message: str, is_secret=False):
-    #     logging.info(f"Adding message to queue: {message[:30]}")
-    #     self.put((message, is_secret))
-    #     first = self.state.get("is_first_message")
-    #     moving = self.state.get("moving")
-    #     if first:
-    #         self.process_next_message()
-    #         self.set_moving(False)
-    #     elif moving: 
-    #         self.process_next_message()
-    #         self.set_moving(False)
     
     def process_next_message(self):
         if not self.empty():

@@ -2,6 +2,7 @@
 import logging, time, queue, os
 from src.interfaces.i_chatbot_service import IChatbotService
 from src.interfaces.data_models import ReplyData, MessageData
+from src.chatbot_interface.chat_state_manager import ChatStateManager
 from src.backends.backend_setup.discover import get_chrome_version
 from src.backends.gemini_base import Bard
 from src.backends.backend_setup.openai import ChatGPT
@@ -10,95 +11,9 @@ from src.user_interface.workers import SendMessageToChatbotWorker, MessageQueue
 from src.signals.chat_signal_manager import ChatbotState, MessageType
 from PyQt5.QtCore import QTimer, QEventLoop
 from typing import TYPE_CHECKING
-from enum import Enum
 
 if TYPE_CHECKING: 
     from src.client.client import SignalManager
-
-
-class ChatStateManager():
-    def __init__(self, signal_manager: 'SignalManager'):
-        super().__init__()
-        self.signals = signal_manager.chat_signals
-        self.state = ChatbotState.INITIAL
-
-    def update_state(self, new_state: ChatbotState):
-        self.state = new_state
-        self.emit_signal_for_state(new_state)
-        print(f"State updated to: {new_state}")
-
-    def emit_signal_for_state(self, state: ChatbotState):
-        if state == ChatbotState.INITIAL:
-            self.signals.state_initial.emit()
-        elif state == ChatbotState.CONNECTING:
-            self.signals.state_connecting.emit()
-        elif state == ChatbotState.CONNECTED:
-            self.signals.state_connected.emit()
-        elif state == ChatbotState.SENDING_INSTRUCTIONS:
-            self.signals.state_sending_instructions.emit()
-        elif state == ChatbotState.INSTRUCTIONS_SENT:
-            self.signals.state_instructions_sent.emit()
-        elif state == ChatbotState.READYING_MESSAGE:
-            self.signals.state_readying_message.emit()
-        elif state == ChatbotState.API_BUSY:
-            self.signals.state_api_busy.emit()
-        elif state == ChatbotState.API_READY: 
-            self.signals.state_api_ready.emit()
-        elif state == ChatbotState.IDLE:
-            self.signals.state_idle.emit()
-        elif state == ChatbotState.ERROR:
-            self.signals.state_error.emit()
-
-    def is_state(self, state: ChatbotState) -> bool:
-        return self.state == state
-
-class MockChatbot(ISystemModule, IChatbotService):
-    def __init__(self, signal_manager):
-        super().__init__()
-        self.signal_manager = signal_manager
-
-    def add_message_to_queue(self, message: str) -> str:
-        # Simulate a response
-        simulated_response = "Simulated response for: " + message
-        logging.info(f"MockChatbot received: {message}")
-        logging.info(f"MockChatbot responding with: {simulated_response}")
-        logging.info("\033[96mAbout to emit request message display\033[0m")
-        self.signal_manager.request_message_display.emit(simulated_response)
-        return simulated_response
-
-    def start(self):
-        logging.info("MockChatbot started...")
-
-    def stop(self):
-        logging.info("MockChatbot stopped...")
-
-    def get_status(self) -> dict:
-        return {"connected": True}
-    
-    def initialize(self):
-        logging.info("Initializing MockChatbot...")
-
-    def reset(self):
-        logging.info("Resetting MockChatbot...")
-
-    def update(self):
-        logging.info("Updating MockChatbot...")
-    
-    def close_connection(self):
-        logging.info("MockChatbot connection closed.")
-
-    def configure(self, config: dict):
-        logging.info("Configuring MockChatbot...")
-
-    def handle_chatbot_event(self, event: dict):
-        logging.info(f"Handling event: {event}")
-
-    def initialize_connection(self):
-        logging.info("Initializing MockChatbot connection...")
-
-    def update_settings(self, settings: dict):
-        logging.info(f"Updating MockChatbot settings: {settings}")
-
 
 class ChatbotInterface(ISystemModule, IChatbotService):
 

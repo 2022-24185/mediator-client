@@ -20,7 +20,7 @@ from src.signals.chat_signal_manager import ChatbotState
 
 if TYPE_CHECKING:
     from src.client.client import SignalManager
-    from src.chatbot_interface.chatbot import ChatStateManager
+    from src.chatbot_interface.chat_state_manager import ChatStateManager
     
 
 # Create a new logger
