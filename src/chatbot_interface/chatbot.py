@@ -7,11 +7,50 @@ from src.backends.gemini_base import Bard
 from src.backends.backend_setup.openai import ChatGPT
 from src.interfaces.i_system_module import ISystemModule
 from src.user_interface.workers import SendMessageToChatbotWorker, MessageQueue
+from src.signals.chat_signal_manager import ChatbotState, MessageType
 from PyQt5.QtCore import QTimer, QEventLoop
 from typing import TYPE_CHECKING
+from enum import Enum
 
 if TYPE_CHECKING: 
     from src.client.client import SignalManager
+
+
+class ChatStateManager():
+    def __init__(self, signal_manager: 'SignalManager'):
+        super().__init__()
+        self.signals = signal_manager.chat_signals
+        self.state = ChatbotState.INITIAL
+
+    def update_state(self, new_state: ChatbotState):
+        self.state = new_state
+        self.emit_signal_for_state(new_state)
+        print(f"State updated to: {new_state}")
+
+    def emit_signal_for_state(self, state: ChatbotState):
+        if state == ChatbotState.INITIAL:
+            self.signals.state_initial.emit()
+        elif state == ChatbotState.CONNECTING:
+            self.signals.state_connecting.emit()
+        elif state == ChatbotState.CONNECTED:
+            self.signals.state_connected.emit()
+        elif state == ChatbotState.SENDING_INSTRUCTIONS:
+            self.signals.state_sending_instructions.emit()
+        elif state == ChatbotState.INSTRUCTIONS_SENT:
+            self.signals.state_instructions_sent.emit()
+        elif state == ChatbotState.READYING_MESSAGE:
+            self.signals.state_readying_message.emit()
+        elif state == ChatbotState.API_BUSY:
+            self.signals.state_api_busy.emit()
+        elif state == ChatbotState.API_READY: 
+            self.signals.state_api_ready.emit()
+        elif state == ChatbotState.IDLE:
+            self.signals.state_idle.emit()
+        elif state == ChatbotState.ERROR:
+            self.signals.state_error.emit()
+
+    def is_state(self, state: ChatbotState) -> bool:
+        return self.state == state
 
 class MockChatbot(ISystemModule, IChatbotService):
     def __init__(self, signal_manager):
@@ -70,9 +109,10 @@ class ChatbotInterface(ISystemModule, IChatbotService):
         self.is_connected = False
         self.signal_manager = signal_manager
         self.signals = signal_manager.chat_signals
+        self.state_manager = ChatStateManager(signal_manager)
+        self.current_mode = MessageType.MEDIATOR_INTERNAL
         self.worker = None
         self.message_queue = None
-        self.is_first_message = True
         
     def initialize(self):
         self.is_running = False
@@ -83,19 +123,30 @@ class ChatbotInterface(ISystemModule, IChatbotService):
 
     def start(self):
         logging.info("Starting ChatbotInterface module...")
+        self.state_manager.update_state(ChatbotState.CONNECTING)
         self.initialize_connection()
+        self.message_queue = MessageQueue(self)
+        self.state_manager.update_state(ChatbotState.API_READY)
         self.is_running = True
+        self.load_and_send_instructions()
+
+    def load_and_send_instructions(self):
         current_dir = os.getcwd()
         file_path = os.path.join(current_dir, "src/chatbot_interface/instructions.txt")
-        with open(file_path, "r") as f:
-            instructions = f.read()
-        
+        try:
+            with open(file_path, "r") as f:
+                instructions = f.read()
+        except FileNotFoundError:
+            logging.error("Instructions file not found.")
+            self.state_manager.update_state(ChatbotState.ERROR)
+            return
         if not instructions:
             logging.info("No instructions found.")
             return
         instructions = instructions.replace('"', '\\"')
         logging.info("Sending instructions to Bard chatbot...")
-        self.message_queue.add_message(instructions, True)
+        self.message_queue.add_message(instructions, MessageType.MEDIATOR_INTERNAL)
+        self.state_manager.update_state(ChatbotState.SENDING_INSTRUCTIONS)
 
     def stop(self):
         logging.info("Stopping ChatbotInterface module...")
@@ -114,66 +165,38 @@ class ChatbotInterface(ISystemModule, IChatbotService):
         logging.info("\033[96mAbout to emit is line free\033[0m")
         self.signals.is_line_free.emit(is_ready)
 
-    def initialize_connection(self):
-        """
-        Establishes a connection to the Bard chatbot service by initializing the Bard instance.
-        """
-        use_openai = True
+    def set_mode(self, mode: MessageType):
+        self.current_mode = mode
 
-        logging.info("Initializing connection to Bard chatbot service...")
+    def get_mode(self) -> MessageType:
+        return self.current_mode
+
+    def initialize_connection(self):
+        logging.info("Initializing connection to the chatbot service...")
+        self.state_manager.update_state(ChatbotState.CONNECTING)
         try:
+            # TODO: add logic for Bard too
             chrome_version = get_chrome_version(path=self.chrome_path)
-            logging.info(f"Detected Chrome version: {chrome_version}")
-            if use_openai:
-                self.bard = ChatGPT(self.signal_manager, path=self.chrome_path, driver_version=chrome_version)
-                logging.info("Opening ChatGPT chatbot connection...")
-                self.bard.open()
-                logging.info("ChatGPT browser launched.")
-                self.bard.new_chat('imgpt')
-                self.is_connected = True
-                logging.info("ChatGPT chatbot connection established.")
-            else: 
-                self.bard = Bard(path=self.chrome_path, driver_version=chrome_version)
-                logging.info("Opening Gemini chatbot connection...")
-                self.bard.open()
-                logging.info("Gemini browser launched.")
-                self.bard.new_chat('imgemini')
-                self.is_connected = True
-                logging.info("Gemini chatbot connection established.")
-            self.message_queue = MessageQueue(self)
+            self.bard = ChatGPT(self.signal_manager, self.state_manager, path=self.chrome_path, driver_version=chrome_version)
+            logging.info("chatgpt initialilzed")
+            self.bard.open()
+            logging.info("open.")
+            assert self.state_manager.is_state(ChatbotState.CONNECTED), "Failed to connect to Bard chatbot."
+            self.bard.new_chat('chat_session')
         except Exception as e:
-            logging.error(f"Failed to initialize Bard chatbot connection: {e}")
-            self.is_connected = False
+            logging.error(f"Failed to initialize connection: {e}")
+            self.state_manager.update_state(ChatbotState.ERROR)
 
     def close_connection(self):
-        """
-        Closes the connection to the Bard chatbot service.
-        """
-        logging.info("\033[31mTrying to close API connection...\033[0m")
+        logging.info("Closing chatbot connection...")
         if self.bard and self.is_connected:
-            logging.info('Closing API chatbot connection...')
             self.bard.close()
-            self.is_connected = False
-            logging.info("API chatbot connection closed.")
+            self.state_manager.update_state(ChatbotState.INITIAL)
         else:
-            logging.info("Bard chatbot connection is already closed or was never established.")
+            logging.info("Chatbot connection is already closed or was never established.")
 
-    def add_message_to_queue(self, message: str, is_secret=False) -> str:
-        logging.info(f"Adding message to chatbot queue: {message[:30]}")
-        if not self.is_connected:
-            logging.warning("Bard chatbot is not connected. Initializing connection...")
-            self.initialize_connection()
-        
-        if self.is_connected:
-            self.message_queue.add_message(message, is_secret)
-            # self.chat_signals.
-            return "Message queued for processing."
-        else:
-            error_message = "Connection to Bard chatbot could not be established."
-            logging.info("\033[96mAbout to emit error msg\033[0m")
-
-            self.signals.dialogue_chatbot_msg_received.emit(error_message)
-            return error_message
+    def add_message_to_queue(self, message: str, message_type: MessageType):
+        self.message_queue.add_message(message, message_type)
         
     def _send_message(self, message: str) -> str:
         try:
@@ -188,6 +211,40 @@ class ChatbotInterface(ISystemModule, IChatbotService):
                 logging.info("\033[96mAbout to emit chatbot error\033[0m")
                 self.signals.chatbot_error.emit(error_message)  # Emit the error message
             return error_message
+    
+    def try_process_next_message_in_queue(self):
+        sending_instructions = self.state_manager.is_state(ChatbotState.SENDING_INSTRUCTIONS)
+        api_ready = self.state_manager.is_state(ChatbotState.API_READY)
+
+        if sending_instructions: 
+            message, _ = self.message_queue.get_next_message()
+            self.set_mode(MessageType.MEDIATOR_INTERNAL)
+            if not message:
+                raise Exception("No instructions to process.")
+            self.process_message(message)
+            return
+        
+        if not api_ready:
+            logging.info("Chatbot not ready to process messages.")
+            return
+        
+        self.state_manager.update_state(ChatbotState.READYING_MESSAGE)
+        message_info = self.message_queue.get_next_message()
+        if message_info:
+            message, message_type = message_info
+            self.set_mode(message_type)
+            self.process_message(message)
+        else:
+            self.state_manager.update_state(ChatbotState.IDLE)
+            logging.info("No messages to process. Waiting for new messages.")
+
+    def process_message(self, message: str):
+        try:
+            self.bard.query(message)
+            logging.info(f"Sent query to Bard: {message}"[:50])
+        except Exception as e:
+            logging.error(f"Error in sending or processing message: {e}"[:50])
+            self.state_manager.update_state(ChatbotState.ERROR)
         
     def send_message_from_queue(self):
         self.message_queue.process_next_message()
@@ -200,25 +257,23 @@ class ChatbotInterface(ISystemModule, IChatbotService):
             self.message_queue.submitted_first_message()
             self.signals.first_message_submitted.emit()
 
-    def process_response(self, reply): 
-        logging.info("PROCESSING response...")
-        is_secret = self.message_queue.get_state().get("is_secret")
-        logging.info(f"Is secret? {is_secret}")
+    def process_response(self, reply):
+        if self.state_manager.is_state(ChatbotState.SENDING_INSTRUCTIONS):
+            self.state_manager.update_state(ChatbotState.INSTRUCTIONS_SENT)
         reply = "BARD: " + reply
-        reply_data = ReplyData(last_response=reply, last_response_time=time.time(), is_secret=is_secret)
-        if not is_secret:
-            logging.info("\033[96mAbout to emit chatbot msg received\033[0m")
-            self.signals.dialogue_chatbot_msg_received.emit(reply_data.model_dump())
-        else: 
-            logging.info("\033[96mAbout to emit secret chatbot msg received\033[0m")
-            self.signals.secret_chatbot_msg_received.emit(reply_data.model_dump())
+        reply_data = ReplyData(last_response=reply, last_response_time=time.time(), message_mode = self.get_mode().value)
+        should_display = (self.get_mode() == MessageType.MEDIATOR_PUBLIC) or (self.get_mode() == MessageType.USER)
+        if should_display:
+            self.signals.public_chatbot_msg_received.emit(reply_data.model_dump())
+        else:
+            self.signals.internal_chatbot_msg_received.emit(reply_data.model_dump())
         logging.info(f"Received response from chatbot API: {reply_data.last_response}"[:50])
 
-    def start_message_queueing_thread(self, message: str, is_secret=False) -> str:
+    def start_message_queueing_thread(self, message, message_type: MessageType) -> str:
         if self.worker is not None: 
             logging.info("Waiting for handle message submission worker")
             self.worker.wait()
-        self.worker = SendMessageToChatbotWorker(message, self)
+        self.worker = SendMessageToChatbotWorker(message, self, message_type)
         self.worker.start()
         message_data = MessageData.model_validate({"last_message": message, "last_message_time": time.time()})
         self.signals.dialogue_user_msg_received.emit(message_data.model_dump())

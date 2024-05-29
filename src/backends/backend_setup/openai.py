@@ -16,8 +16,12 @@ from selenium.webdriver.remote.webelement import WebElement
 from PyQt5.QtCore import QObject, pyqtSignal, QThread, pyqtSlot
 import debugpy
 
+from src.signals.chat_signal_manager import ChatbotState
+
 if TYPE_CHECKING:
     from src.client.client import SignalManager
+    from src.chatbot_interface.chatbot import ChatStateManager
+    
 
 # Create a new logger
 logger = logging.getLogger()
@@ -71,7 +75,6 @@ class ElementLocatorWorker(QThread):
         self.driver = driver
         self.locator = locator.value
         self.extra = extra
-        self.is_secret = False
         self._parent = _parent
         logging.info("\033[94mElementLocatorWorker INITIALIZED\033[0m")
         logging.info(f"\033[94mlocator: {locator}\033[0m")
@@ -118,7 +121,6 @@ class ActionExecutorWorker(QThread):
         self.element = element
         self.action = action
         self.value = value
-        self.is_secret = False
         self._parent = _parent
         logging.info("\033[94mActionExecutorWorker INITIALIZED\033[0m")
 
@@ -171,7 +173,7 @@ class ChatGPT(QObject, SeleniumService):
     BTN_NEW_CHAT = "//nav[@aria-label='Chat history']//button[contains(@class, 'h-10')]"
     BTN_NEW_CHAT_COLLAPSED = "//button[contains(@class, 'h-10') and contains(@class, 'rounded-lg')]"
 
-    def __init__(self, signal_manager : 'SignalManager', **kwargs):
+    def __init__(self, signal_manager : 'SignalManager', state_manager: 'ChatStateManager', **kwargs):
         super().__init__(**kwargs)
         # set when opening a new session with a desired name
         # we have to wait until after the first query to
@@ -179,13 +181,14 @@ class ChatGPT(QObject, SeleniumService):
 
         # default session name gets overridden if specified in ctor or new_chat
         # but we need one in case we need to reload the chat on error
+        logging.info("initializing ChatGPT")
         self.session_name = datetime.datetime.now().strftime("%Y.%m.%d.%H.%M")
         self.session_needs_renaming = False
-        self.is_ready = True
-        self.is_first_message = True
+        self.state_manager = state_manager
         self.worker = None
         if signal_manager: 
             self.signals = signal_manager.api_signals
+        logging.info("ChatGPT initialized")
 
     def get_service_name():
         return "OpenAI's ChatGPT"
@@ -202,6 +205,7 @@ class ChatGPT(QObject, SeleniumService):
     def open(self):
         self._load_page('https://chatgpt.com/?oai-dm=1&temporary-chat=true')
         self._wait_until_xpath(Element.BTN_SEND.value) # PREFS is last thing to load
+        self.state_manager.update_state(ChatbotState.CONNECTED)
 
     def get_models(self) -> list[str]:
         return ['GPT-3.5', 'GPT-4o','GPT-4']
@@ -211,8 +215,11 @@ class ChatGPT(QObject, SeleniumService):
     
     def query(self, text: str) -> str:
         try:
-            self.is_ready = False
-            self.enter_text(text)
+            if self.state_manager.state == ChatbotState.SENDING_INSTRUCTIONS:
+                self.enter_text(text)
+            else: 
+                self.state_manager.update_state(ChatbotState.API_BUSY)
+                self.enter_text(text)
         except Exception as e:
             logging.error(f"Error occurred in query: {e}")
 
@@ -326,7 +333,8 @@ class ChatGPT(QObject, SeleniumService):
         logging.info("\033[96mAbout to emit response collected\033[0m")
         self.signals.chatbot_response_collected.emit(message)
         logging.info("\033[96mAbout to emit is ready to go\033[0m")
-        self.signals.is_ready_to_go.emit(True)
+        self.state_manager.update_state(ChatbotState.API_READY)
+        #self.signals.is_ready_to_go.emit(True)
 
     def refresh_and_retry(self):
         """Refresh the page and retry the operation."""

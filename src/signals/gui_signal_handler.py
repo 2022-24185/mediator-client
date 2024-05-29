@@ -20,7 +20,7 @@ class GUISignalHandler(BaseSignalHandler):
         super().__init__(signal_manager, gui)
 
     def connect_signals(self):
-        self.chatbot_signals.dialogue_chatbot_msg_received.connect(self.handle_chatbot_msg_received)
+        self.chatbot_signals.public_chatbot_msg_received.connect(self.handle_chatbot_msg_received)
 
     @pyqtSlot(dict)
     def handle_chatbot_msg_received(self, reply_data: dict):

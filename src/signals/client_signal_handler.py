@@ -18,7 +18,7 @@ class ClientSignalHandler(BaseSignalHandler):
         super().__init__(signal_manager, client)
 
     def connect_signals(self):
-        self.chatbot_signals.first_message_submitted.connect(self.handle_instructions_delivered)
+        self.chatbot_signals.state_instructions_sent.connect(self.handle_instructions_delivered)
 
     def handle_instructions_delivered(self):
         logging.info("GUISignalHandler handle instructions delivered")

@@ -62,11 +62,11 @@ class ReplyData(BaseModel):
     Attributes:
         last_response (str): The last response received.
         last_response_time (float): The time when the last response was received.
-        is_secret (bool): Indicates whether the reply should be hidden from the user or not.
+        message_mode (str): Indicates whether the reply should be hidden from the user or not.
     """
     last_response: str
     last_response_time: float
-    is_secret: bool
+    message_mode: str
 
 class MessageData(BaseModel):
     """

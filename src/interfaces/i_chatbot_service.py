@@ -28,15 +28,6 @@ class IChatbotService(ABC):
         pass
 
     @abstractmethod
-    def handle_chatbot_event(self, event: dict):
-        """
-        Handles specific events from the chatbot.
-        :param event: dict - Event data from the chatbot.
-        This could include handling session starts, errors, or other chatbot-specific events.
-        """
-        pass
-
-    @abstractmethod
     def update_settings(self, settings: dict):
         """
         Updates settings or configurations for the chatbot.

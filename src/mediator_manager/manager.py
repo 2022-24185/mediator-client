@@ -207,10 +207,13 @@ class MediatorManagementModule(ISystemModule, IMediatorHandler):
         normalized_input_data = self.normalize_input_data(input_data)
         biggest_output, index = self.current_mediator.process_input(normalized_input_data)
         logging.info(f"Biggest output: {biggest_output}, index: {index}")
-        message, is_secret = self.get_message(index)
+        message, internal = self.get_message(index)
         if biggest_output >= 0.5:
             logging.info("\033[96mAbout to emit mediator msg ready\033[0m")
-            self.signals.mediator_msg_ready.emit(message, is_secret)
+            if internal:
+                self.signals.internal_mediator_msg_ready.emit(message)
+            else:
+                self.signals.public_mediator_msg_ready.emit(message)
     
     def get_message(self, index):
         calm_messages = [
@@ -240,7 +243,7 @@ class MediatorManagementModule(ISystemModule, IMediatorHandler):
         ]
 
         # if poke message, it's not a secret message, otherwise it is. 
-        is_secret = False
+        internal = True
         # determine message by index
         if index == 0:
             message = random.choice(calm_messages)
@@ -250,13 +253,9 @@ class MediatorManagementModule(ISystemModule, IMediatorHandler):
             message = random.choice(funny_messages)
         else:
             message = random.choice(poke_messages)
-            is_secret = False
-        if message in poke_messages:
-            is_secret = False
-        else:
-            is_secret = True
+            internal = False
 
-        return message, is_secret
+        return message, internal
     
     def get_urgency_factor(self, sentiment, time_factor, unanswered_factor):
         # Calculate the urgency factor based on sentiment strength, time elapsed, and inverse of unanswered messages

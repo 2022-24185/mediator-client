@@ -3,6 +3,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
 import logging, time, queue
 from src.interfaces.data_models import UserData, MediatorData
 import debugpy
+from src.signals.chat_signal_manager import MessageType
 
 from typing import TYPE_CHECKING
 
@@ -14,16 +15,15 @@ if TYPE_CHECKING:
 
 
 class SendMessageToChatbotWorker(QThread):
-    def __init__(self, message, chatbot, is_secret=False):
+    def __init__(self, message, chatbot, message_type: MessageType):
         super().__init__()
         self.message = message
         self.chatbot : 'ChatbotInterface' = chatbot
-        self.is_secret = is_secret
+        self.message_type = message_type
         logging.info(f"\033[94mSendMessageToChatbotWorker INITIALIZED\033[0m")
 
     def run(self):
         #debugpy.debug_this_thread()
-        # Long-running operation goes here
         logging.info("\033[91mSendMessageToChatbotWorker started\033[0m")
         try: 
             if self.message == "" or self.message is None:
@@ -33,10 +33,7 @@ class SendMessageToChatbotWorker(QThread):
                 "last_message_time": time.time(),
                 "last_message": self.message
             }
-            if self.is_secret: 
-                self.chatbot.add_message_to_queue(self.message, is_secret = True)
-            else: 
-                self.chatbot.add_message_to_queue(self.message)
+            self.chatbot.add_message_to_queue(self.message, self.message_type)
         finally: 
             self.cleanup()
 
@@ -48,33 +45,34 @@ class SendMessageToChatbotWorker(QThread):
 class MessageQueue(queue.Queue):
     message_processed = pyqtSignal(str)
 
-    def __init__(self, chatbot):
+    def __init__(self, chatbot: 'ChatbotInterface'):
         super().__init__()
         self.chatbot = chatbot
-        self.state = {"is_secret": False, "is_first_message": True, "moving": True}
         logging.info(f"\033[94mMessageQueue initialized\033[0m")
 
-    def submitted_first_message(self): 
-        self.state.update({"is_first_message": False})
-
-    def set_moving(self, line_is_free: bool): 
-        """Set whether the queue can automatically process messages"""
-        self.state.update({"moving": bool})
-
-    def get_state(self): 
-        return self.state
-
-    def add_message(self, message: str, is_secret=False):
+    def get_next_message(self):
+        if not self.empty():
+            return self.get()
+        else:
+            logging.warning("Queue is empty, no message to process.")
+            return None
+    
+    def add_message(self, message: str, message_type: MessageType):
         logging.info(f"Adding message to queue: {message[:30]}")
-        self.put((message, is_secret))
-        first = self.state.get("is_first_message")
-        moving = self.state.get("moving")
-        if first:
-            self.process_next_message()
-            self.set_moving(False)
-        elif moving: 
-            self.process_next_message()
-            self.set_moving(False)
+        self.put((message, message_type))
+        self.chatbot.try_process_next_message_in_queue()
+
+    # def add_message(self, message: str, is_secret=False):
+    #     logging.info(f"Adding message to queue: {message[:30]}")
+    #     self.put((message, is_secret))
+    #     first = self.state.get("is_first_message")
+    #     moving = self.state.get("moving")
+    #     if first:
+    #         self.process_next_message()
+    #         self.set_moving(False)
+    #     elif moving: 
+    #         self.process_next_message()
+    #         self.set_moving(False)
     
     def process_next_message(self):
         if not self.empty():
@@ -166,11 +164,11 @@ class MediatorProcessingWorker(QThread):
         #debugpy.debug_this_thread()
         logging.info("\033[91mMediator processing started\033[0m")
         if self.data:
-            response, is_secret = self.mediator_manager.process_input(self.data)
-            logging.info(f"Mediator processing complete: {response}, {is_secret}")
+            response, internal = self.mediator_manager.process_input(self.data)
+            logging.info(f"Mediator processing complete: {response[:30]}, internal? {internal}")
             if response: 
                 logging.info("\033[98mAbout to emit mediator msg ready\033[0m")
-                self.signals.mediator_msg_ready.emit(response, is_secret)
+                self.signals.public_mediator_msg_ready.emit(response, internal)
             else: 
                 logging.info("No response from mediator")
                 

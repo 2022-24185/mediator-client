@@ -27,7 +27,7 @@ class CollectorSignalHandler(BaseSignalHandler):
         self.mediator_signals.mediator_requested.connect(lambda data: self.handle_data_submission(data, True))
         #self.chat_signals.secret_chatbot_msg_received.connect(self.handle_data_submission)
         self.chat_signals.dialogue_user_msg_received.connect(self.handle_data_submission)
-        self.chat_signals.dialogue_chatbot_msg_received.connect(self.handle_data_submission)
+        self.chat_signals.public_chatbot_msg_received.connect(self.handle_data_submission)
 
     @pyqtSlot(dict)
     def handle_data_submission(self, data: dict, request_mediator = False):

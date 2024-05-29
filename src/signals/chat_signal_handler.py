@@ -2,6 +2,7 @@ from PyQt5.QtCore import pyqtSlot
 from src.interfaces.i_signal_handler import BaseSignalHandler
 from src.user_interface.workers import SendMessageToChatbotWorker
 from typing import TYPE_CHECKING, Optional
+from src.signals.chat_signal_manager import MessageType
 import logging
 
 if TYPE_CHECKING:
@@ -25,20 +26,20 @@ class ChatSignalHandler(BaseSignalHandler):
         self.api_signals.chatbot_response_collected.connect(self.handle_response_retrieved)
         self.api_signals.is_ready_to_go.connect(self.handle_API_ready)
         self.api_signals.api_error.connect(self.handle_api_error)
-        self.mediator_signals.mediator_msg_ready.connect(self.handle_mediator_message)
+        self.mediator_signals.public_mediator_msg_ready.connect(self.handle_public_mediator_message)
+        self.mediator_signals.internal_mediator_msg_ready.connect(self.handle_internal_mediator_message) 
 
     @pyqtSlot(str)
     def handle_response_retrieved(self, response: str):
         logging.info("\033[90mChatsignalHandler handle response received\033[0m")
         logging.info(f"Response received: {response}"[:50])
-        self.chatbot_interface.update_first_message()  
         self.chatbot_interface.process_response(response)
 
     @pyqtSlot(str)
-    def handle_message_submission(self, message, first = False):
+    def handle_message_submission(self, message):
         logging.info(f"Message submitted: {message}"[:50])
         logging.info("\033[90mChatsignalHandler handle message submission\033[0m")
-        self.chatbot_interface.start_message_queueing_thread(message, first)
+        self.chatbot_interface.start_message_queueing_thread(message, MessageType.USER)
 
     @pyqtSlot(bool)
     def handle_API_ready(self, is_ready: bool):
@@ -55,8 +56,13 @@ class ChatSignalHandler(BaseSignalHandler):
     def handle_api_error(self, error: str):
         logging.error(f"API Error: {error}")
 
-    def handle_mediator_message(self, message):
+    def handle_public_mediator_message(self, message):
         logging.info("\033[90mChatsignalHandler handle mediator message\033[0m")
         logging.info(f"TODO: Mediator message received: {message}"[:50])
-        self.chatbot_interface.add_message_to_queue(message, is_secret=True)
+        self.chatbot_interface.start_message_queueing_thread(message, MessageType.MEDIATOR_PUBLIC)
         #self.chatbot_interface.send_message(message)
+
+    def handle_internal_mediator_message(self, message):
+        logging.info("\033[90mChatsignalHandler handle internal mediator message\033[0m")
+        logging.info(f"TODO: Internal mediator message received: {message}"[:50])
+        self.chatbot_interface.start_message_queueing_thread(message, MessageType.MEDIATOR_INTERNAL)
