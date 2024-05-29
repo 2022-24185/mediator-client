@@ -21,13 +21,12 @@ class ChatbotInterface(ISystemModule, IChatbotService):
         super().__init__()
         self.bard = None
         self.chrome_path = "/Applications/Google\ Chrome\ 2.app/Contents/MacOS/Google\ Chrome"
-        self.is_connected = False
         self.signal_manager = signal_manager
         self.signals = signal_manager.chat_signals
-        self.state_manager = ChatStateManager(signal_manager)
+        self.state = ChatStateManager(signal_manager)
         self.current_mode = MessageType.MEDIATOR_INTERNAL
         self.worker = None
-        self.message_queue = None
+        self.message_queue = MessageQueue(self)
         
     def initialize(self):
         self.is_running = False
@@ -38,30 +37,59 @@ class ChatbotInterface(ISystemModule, IChatbotService):
 
     def start(self):
         logging.info("Starting ChatbotInterface module...")
-        self.state_manager.update_state(ChatbotState.CONNECTING)
-        self.initialize_connection()
-        self.message_queue = MessageQueue(self)
-        self.state_manager.update_state(ChatbotState.API_READY)
-        self.is_running = True
+        self.state.update_state(ChatbotState.CONNECTING)
+        self.connect_to_API()
+        self.state.update_state(ChatbotState.API_READY)
         self.load_and_send_instructions()
+        self.is_running = True
+
+    def connect_to_API(self):
+        logging.info("Initializing connection to the chatbot service...")
+        try:
+            # TODO: add logic for Bard too
+            self._initialize_chatgpt()
+            self._open_chatgpt_service()
+            self._start_new_chat_session()
+        except Exception as e:
+            logging.error(f"Failed to initialize connection: {e}")
+            self.state.update_state(ChatbotState.ERROR)
+
+    def _initialize_chatgpt(self):
+        chrome_version = get_chrome_version(path=self.chrome_path)
+        self.bard = ChatGPT(self.signal_manager, self.state, path=self.chrome_path, driver_version=chrome_version)
+        logging.info("ChatGPT initialized")
+
+    def _open_chatgpt_service(self):
+        self.bard.open()
+        if not self.state.is_state(ChatbotState.CONNECTED):
+            raise ConnectionError("Failed to connect to ChatGPT service.")
+
+    def _start_new_chat_session(self):
+        self.bard.new_chat('chat_session')
 
     def load_and_send_instructions(self):
-        current_dir = os.getcwd()
-        file_path = os.path.join(current_dir, "src/chatbot_interface/instructions.txt")
+        instructions = self._load_instructions()
+        if instructions:
+            self._send_instructions(instructions)
+
+    def _load_instructions(self):
+        file_path = os.path.join(os.getcwd(), "src/chatbot_interface/instructions.txt")
         try:
             with open(file_path, "r") as f:
                 instructions = f.read()
+                if not instructions:
+                    logging.info("No instructions found.")
+                    return None
+                return instructions.replace('"', '\"')
         except FileNotFoundError:
             logging.error("Instructions file not found.")
-            self.state_manager.update_state(ChatbotState.ERROR)
-            return
-        if not instructions:
-            logging.info("No instructions found.")
-            return
-        instructions = instructions.replace('"', '\\"')
+            self.state.update_state(ChatbotState.ERROR)
+            return None
+
+    def _send_instructions(self, instructions):
         logging.info("Sending instructions to Bard chatbot...")
         self.add_message_to_queue(instructions, MessageType.MEDIATOR_INTERNAL)
-        self.state_manager.update_state(ChatbotState.SENDING_INSTRUCTIONS)
+        self.state.update_state(ChatbotState.SENDING_INSTRUCTIONS)
 
     def stop(self):
         logging.info("Stopping ChatbotInterface module...")
@@ -81,27 +109,11 @@ class ChatbotInterface(ISystemModule, IChatbotService):
     def get_mode(self) -> MessageType:
         return self.current_mode
 
-    def initialize_connection(self):
-        logging.info("Initializing connection to the chatbot service...")
-        self.state_manager.update_state(ChatbotState.CONNECTING)
-        try:
-            # TODO: add logic for Bard too
-            chrome_version = get_chrome_version(path=self.chrome_path)
-            self.bard = ChatGPT(self.signal_manager, self.state_manager, path=self.chrome_path, driver_version=chrome_version)
-            logging.info("chatgpt initialilzed")
-            self.bard.open()
-            logging.info("open.")
-            assert self.state_manager.is_state(ChatbotState.CONNECTED), "Failed to connect to Bard chatbot."
-            self.bard.new_chat('chat_session')
-        except Exception as e:
-            logging.error(f"Failed to initialize connection: {e}")
-            self.state_manager.update_state(ChatbotState.ERROR)
-
     def close_connection(self):
         logging.info("Closing chatbot connection...")
-        if self.bard and self.is_connected:
+        if self.bard:
             self.bard.close()
-            self.state_manager.update_state(ChatbotState.INITIAL)
+            self.state.update_state(ChatbotState.INITIAL)
         else:
             logging.info("Chatbot connection is already closed or was never established.")
 
@@ -109,31 +121,36 @@ class ChatbotInterface(ISystemModule, IChatbotService):
         self.message_queue.add_message(message, message_type)
     
     def try_process_next_message_in_queue(self):
-        sending_instructions = self.state_manager.is_state(ChatbotState.SENDING_INSTRUCTIONS)
-        api_ready = self.state_manager.is_state(ChatbotState.API_READY)
-        idle = self.state_manager.is_state(ChatbotState.IDLE)
-
-        if sending_instructions: 
-            message, _ = self.message_queue.get_next_message()
-            self.set_mode(MessageType.MEDIATOR_INTERNAL)
-            if not message:
-                raise Exception("No instructions to process.")
-            self.process_message(message)
-            return
-        
-        if not (api_ready or idle):
+        if self._is_sending_instructions(): 
+            self._process_instructions()
+        elif self._is_ready_for_processing():
+            self._process_next_message_in_queue()
+        else:
             logging.info("Chatbot not ready to process messages.")
-            return
-        
-        self.state_manager.update_state(ChatbotState.READYING_MESSAGE)
+
+    def _process_next_message_in_queue(self):
+        self.state.update_state(ChatbotState.READYING_MESSAGE)
         message_info = self.message_queue.get_next_message()
         if message_info:
             message, message_type = message_info
             self.set_mode(message_type)
             self.process_message(message)
         else:
-            self.state_manager.update_state(ChatbotState.IDLE)
+            self.state.update_state(ChatbotState.IDLE)
             logging.info("No messages to process. Waiting for new messages.")
+
+    def _is_sending_instructions(self):
+        return self.state.is_state(ChatbotState.SENDING_INSTRUCTIONS)
+
+    def _process_instructions(self):
+        message, _ = self.message_queue.get_next_message()
+        self.set_mode(MessageType.MEDIATOR_INTERNAL)
+        if not message:
+            raise Exception("No instructions to process.")
+        self.process_message(message)
+
+    def _is_ready_for_processing(self):
+        return self.state.is_state(ChatbotState.API_READY) or self.state.is_state(ChatbotState.IDLE)
 
     def process_message(self, message: str):
         try:
@@ -141,21 +158,33 @@ class ChatbotInterface(ISystemModule, IChatbotService):
             logging.info(f"Sent query to Bard: {message}"[:50])
         except Exception as e:
             logging.error(f"Error in sending or processing message: {e}"[:50])
-            self.state_manager.update_state(ChatbotState.ERROR)
+            self.state.update_state(ChatbotState.ERROR)
         
     def process_response(self, reply):
-        if self.state_manager.is_state(ChatbotState.SENDING_INSTRUCTIONS):
-            self.state_manager.update_state(ChatbotState.INSTRUCTIONS_SENT)
-            self.state_manager.update_state(ChatbotState.API_READY)
-        reply = "BARD: " + reply
-        reply_data = ReplyData(last_response=reply, last_response_time=time.time(), message_mode = self.get_mode().value)
+        self._update_state_after_sending_instructions()
+        formatted_reply = self._format_reply(reply)
+        reply_data = self._create_reply_data(formatted_reply)
+        self._emit_reply_signal(reply_data)
+        self.try_process_next_message_in_queue()
+        logging.info(f"Received response from chatbot API: {reply_data.last_response}")
+
+    def _update_state_after_sending_instructions(self):
+        if self.state.is_state(ChatbotState.SENDING_INSTRUCTIONS):
+            self.state.update_state(ChatbotState.INSTRUCTIONS_SENT)
+            self.state.update_state(ChatbotState.API_READY)
+
+    def _format_reply(self, reply):
+        return "BARD: " + reply
+
+    def _create_reply_data(self, reply):
+        return ReplyData(last_response=reply, last_response_time=time.time(), message_mode = self.get_mode().value)
+
+    def _emit_reply_signal(self, reply_data):
         should_display = (self.get_mode() == MessageType.MEDIATOR_PUBLIC) or (self.get_mode() == MessageType.USER)
         if should_display:
             self.signals.public_chatbot_msg_received.emit(reply_data.model_dump())
         else:
             self.signals.internal_chatbot_msg_received.emit(reply_data.model_dump())
-        self.try_process_next_message_in_queue()
-        logging.info(f"Received response from chatbot API: {reply_data.last_response}"[:50])
 
     def start_message_queueing_thread(self, message, message_type: MessageType) -> str:
         if self.worker is not None: 
@@ -178,7 +207,7 @@ class ChatbotInterface(ISystemModule, IChatbotService):
         Returns the current status of the Bard chatbot.
         """
         status = {
-            "connected": self.is_connected
+            "state": self.state.state.name
         }
         logging.info(f"Bard chatbot status: {status}")
         return status

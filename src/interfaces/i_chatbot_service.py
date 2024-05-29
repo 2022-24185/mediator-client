@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 class IChatbotService(ABC):
     @abstractmethod
-    def initialize_connection(self):
+    def connect_to_API(self):
         """
         Initializes the connection to the chatbot service.
         This method should handle any setup necessary for connecting to the chatbot.

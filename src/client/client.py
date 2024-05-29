@@ -205,7 +205,7 @@ class Client(ISystemModule):
         # Dependency injection
         self.network_handler.set_mock_mode(self.mode == "TEST")
         self.data_collector.set_network_handler(self.network_handler)
-        self.mediator_manager.attach_chatbot_state_manager(self.ci.state_manager)
+        self.mediator_manager.attach_chatbot_state_manager(self.ci.state)
         self.signal_manager.gui_signals.client_stop.connect(self.stop)
         self.signal_handler = SignalHandler(self.signal_manager)
         self.signal_handler.add_handler(CollectorSignalHandler, self.data_collector)

@@ -45,7 +45,7 @@ class ChatSignalHandler(BaseSignalHandler):
     @pyqtSlot(str)
     def handle_api_error(self, error: str):
         logging.error(f"API Error: {error}")
-        self.chatbot_interface.state_manager.update_state(ChatbotState.ERROR)
+        self.chatbot_interface.state.update_state(ChatbotState.ERROR)
 
     def handle_public_mediator_message(self, message):
         logging.info("\033[90mChatsignalHandler handle mediator message\033[0m")

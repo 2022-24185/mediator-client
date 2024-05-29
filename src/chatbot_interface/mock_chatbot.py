@@ -44,7 +44,7 @@ class MockChatbot(ISystemModule, IChatbotService):
     def handle_chatbot_event(self, event: dict):
         logging.info(f"Handling event: {event}")
 
-    def initialize_connection(self):
+    def connect_to_API(self):
         logging.info("Initializing MockChatbot connection...")
 
     def update_settings(self, settings: dict):
