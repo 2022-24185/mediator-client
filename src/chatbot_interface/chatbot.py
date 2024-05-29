@@ -7,9 +7,9 @@ from src.backends.backend_setup.discover import get_chrome_version
 from src.backends.gemini_base import Bard
 from src.backends.backend_setup.openai import ChatGPT
 from src.interfaces.i_system_module import ISystemModule
-from src.user_interface.workers import SendMessageToChatbotWorker, MessageQueue
+from src.user_interface.workers import AddMessageWorker, MessageQueue, ProcessMessageWorker, ProcessResponseWorker
 from src.signals.chat_signal_manager import ChatbotState, MessageType
-from PyQt5.QtCore import QTimer, QEventLoop
+from PyQt5.QtCore import QThreadPool
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING: 
@@ -25,7 +25,7 @@ class ChatbotInterface(ISystemModule, IChatbotService):
         self.signals = signal_manager.chat_signals
         self.state = ChatStateManager(signal_manager)
         self.current_mode = MessageType.MEDIATOR_INTERNAL
-        self.worker = None
+        self.thread_pool = QThreadPool()
         self.message_queue = MessageQueue(self)
         
     def initialize(self):
@@ -117,8 +117,15 @@ class ChatbotInterface(ISystemModule, IChatbotService):
         else:
             logging.info("Chatbot connection is already closed or was never established.")
 
-    def add_message_to_queue(self, message: str, message_type: MessageType):
+    def add_message_to_queue(self, message, message_type: MessageType) -> str:
+        worker = AddMessageWorker(self, message, message_type)
+        self.thread_pool.start(worker)
+        message_data = MessageData.model_validate({"last_message": message, "last_message_time": time.time()})
+        self.signals.dialogue_user_msg_received.emit(message_data.model_dump())
+
+    def _add_message_to_queue_task(self, message: str, message_type: MessageType):
         self.message_queue.add_message(message, message_type)
+        self.try_process_next_message_in_queue()
     
     def try_process_next_message_in_queue(self):
         if self._is_sending_instructions(): 
@@ -153,6 +160,10 @@ class ChatbotInterface(ISystemModule, IChatbotService):
         return self.state.is_state(ChatbotState.API_READY) or self.state.is_state(ChatbotState.IDLE)
 
     def process_message(self, message: str):
+        worker = ProcessMessageWorker(self, message)
+        self.thread_pool.start(worker)
+
+    def _process_message_task(self, message: str):
         try:
             self.bard.query(message)
             logging.info(f"Sent query to Bard: {message}"[:50])
@@ -160,7 +171,11 @@ class ChatbotInterface(ISystemModule, IChatbotService):
             logging.error(f"Error in sending or processing message: {e}"[:50])
             self.state.update_state(ChatbotState.ERROR)
         
-    def process_response(self, reply):
+    def process_response(self, reply): 
+        worker = ProcessResponseWorker(self, reply)
+        self.thread_pool.start(worker)     
+
+    def _process_response_task(self, reply):
         self._update_state_after_sending_instructions()
         formatted_reply = self._format_reply(reply)
         reply_data = self._create_reply_data(formatted_reply)
@@ -185,15 +200,6 @@ class ChatbotInterface(ISystemModule, IChatbotService):
             self.signals.public_chatbot_msg_received.emit(reply_data.model_dump())
         else:
             self.signals.internal_chatbot_msg_received.emit(reply_data.model_dump())
-
-    def start_message_queueing_thread(self, message, message_type: MessageType) -> str:
-        if self.worker is not None: 
-            logging.info("Waiting for handle message submission worker")
-            self.worker.wait()
-        self.worker = SendMessageToChatbotWorker(message, self, message_type)
-        self.worker.start()
-        message_data = MessageData.model_validate({"last_message": message, "last_message_time": time.time()})
-        self.signals.dialogue_user_msg_received.emit(message_data.model_dump())
 
     def update_settings(self, settings: dict):
         """

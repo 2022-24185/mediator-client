@@ -1,6 +1,5 @@
 from PyQt5.QtCore import pyqtSlot
 from src.interfaces.i_signal_handler import BaseSignalHandler
-from src.user_interface.workers import SendMessageToChatbotWorker
 from typing import TYPE_CHECKING, Optional
 from src.signals.chat_signal_manager import MessageType, ChatbotState
 import logging
@@ -40,7 +39,7 @@ class ChatSignalHandler(BaseSignalHandler):
     def handle_message_submission(self, message):
         logging.info(f"Message submitted: {message}"[:50])
         logging.info("\033[90mChatsignalHandler handle message submission\033[0m")
-        self.chatbot_interface.start_message_queueing_thread(message, MessageType.USER)
+        self.chatbot_interface.add_message_to_queue(message, MessageType.USER)
 
     @pyqtSlot(str)
     def handle_api_error(self, error: str):
@@ -50,10 +49,10 @@ class ChatSignalHandler(BaseSignalHandler):
     def handle_public_mediator_message(self, message):
         logging.info("\033[90mChatsignalHandler handle mediator message\033[0m")
         logging.info(f"TODO: Mediator message received: {message}"[:50])
-        self.chatbot_interface.start_message_queueing_thread(message, MessageType.MEDIATOR_PUBLIC)
+        self.chatbot_interface.add_message_to_queue(message, MessageType.MEDIATOR_PUBLIC)
         #self.chatbot_interface.send_message(message)
 
     def handle_internal_mediator_message(self, message):
         logging.info("\033[90mChatsignalHandler handle internal mediator message\033[0m")
         logging.info(f"TODO: Internal mediator message received: {message}"[:50])
-        self.chatbot_interface.start_message_queueing_thread(message, MessageType.MEDIATOR_INTERNAL)
+        self.chatbot_interface.add_message_to_queue(message, MessageType.MEDIATOR_INTERNAL)

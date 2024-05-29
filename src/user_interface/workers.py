@@ -1,5 +1,5 @@
 # src/user_interface/workers.py
-from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QThread, QRunnable, pyqtSignal, pyqtSlot
 import logging, time, queue
 from src.interfaces.data_models import UserData, MediatorData
 import debugpy
@@ -12,35 +12,6 @@ if TYPE_CHECKING:
     from src.client.client import SignalManager
     from src.chatbot_interface.chatbot import ChatbotInterface
     from src.data_collection.collector import ClientDataCollector
-
-
-class SendMessageToChatbotWorker(QThread):
-    def __init__(self, message, chatbot, message_type: MessageType):
-        super().__init__()
-        self.message = message
-        self.chatbot : 'ChatbotInterface' = chatbot
-        self.message_type = message_type
-        logging.info(f"\033[94mSendMessageToChatbotWorker INITIALIZED\033[0m")
-
-    def run(self):
-        #debugpy.debug_this_thread()
-        logging.info("\033[91mSendMessageToChatbotWorker started\033[0m")
-        try: 
-            if self.message == "" or self.message is None:
-                logging.info("Attempted to send an empty message, operation aborted.")
-                return
-            data = {
-                "last_message_time": time.time(),
-                "last_message": self.message
-            }
-            self.chatbot.add_message_to_queue(self.message, self.message_type)
-        finally: 
-            self.cleanup()
-
-    def cleanup(self):
-        # Disconnect signal when the thread has finished its work
-        logging.info("SendMessageToChatbotWorker cleanup")
-        self.quit()
 
 class MessageQueue(queue.Queue):
 
@@ -59,38 +30,45 @@ class MessageQueue(queue.Queue):
     def add_message(self, message: str, message_type: MessageType):
         logging.info(f"Adding message to queue: {message[:30]}")
         self.put((message, message_type))
-        self.chatbot.try_process_next_message_in_queue()
-    
-    def process_next_message(self):
-        if not self.empty():
-            message, is_secret = self.get()
-            self.state.update({"is_secret": is_secret})
-            logging.info(f"\033[91mProcessing next message: {message[:30]}. Secret? {is_secret}\033[0m")
-            worker = ProcessNextMessageInQueueWorker(self.chatbot, message)
-            worker.start()
-            worker.wait()  # Ensure sequential processing
-            self.task_done()
-            # Emit signal externally from chatbot_interface after processing
-        else: 
-            logging.warning("Mistakenly tried to process empty queue")
 
-class ProcessNextMessageInQueueWorker(QThread): 
-    result_signal = pyqtSignal(str)
+class AddMessageWorker(QRunnable):
+
+    def __init__(self, chatbot: 'ChatbotInterface', message: str, message_type: MessageType):
+        super().__init__()
+        self.chatbot = chatbot
+        self.message = message
+        self.message_type = message_type
+
+    def run(self):
+        logging.info("AddMessageWorker started")
+        self.chatbot.message_queue.add_message(self.message, self.message_type)
+        self.chatbot.try_process_next_message_in_queue()
+        logging.info("AddMessageWorker finished")
+
+
+class ProcessMessageWorker(QRunnable):
     def __init__(self, chatbot: 'ChatbotInterface', message):
         super().__init__()
-        self.message = message
         self.chatbot = chatbot
-        logging.info(f"\033[94mProcessNextMessageInQueueWorker initialized with message: {self.message}\033[0m"[:50])
-    
-    def run(self):
-        #debugpy.debug_this_thread()
-        logging.info("\033[91mProcessNextMessageInQueueWorker started\033[0m")
-        self.chatbot.process_message(self.message)
-        self.finished.connect(self.cleanup)
+        self.message = message
 
-    def cleanup(self):
-        logging.info("ProcessNextMessageInQueueWorker cleanup")
-        self.quit()
+    def run(self):
+        logging.info("ProcessMessageWorker started")
+        self.chatbot._process_message_task(self.message)
+        logging.info("ProcessMessageWorker finished")
+
+
+class ProcessResponseWorker(QRunnable):
+    def __init__(self, chatbot: 'ChatbotInterface', reply):
+        super().__init__()
+        self.chatbot = chatbot
+        self.reply = reply
+
+    def run(self):
+        logging.info("ProcessReplyWorker started")
+        self.chatbot._process_response_task(self.reply)
+        logging.info("ProcessReplyWorker finished")
+
 
 class AgentDataUpdateWorker(QThread):
     def __init__(self, data_collector, data, signal_manager):
