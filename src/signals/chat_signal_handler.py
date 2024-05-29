@@ -2,19 +2,21 @@ from PyQt5.QtCore import pyqtSlot
 from src.interfaces.i_signal_handler import BaseSignalHandler
 from src.user_interface.workers import SendMessageToChatbotWorker
 from typing import TYPE_CHECKING, Optional
-from src.signals.chat_signal_manager import MessageType
+from src.signals.chat_signal_manager import MessageType, ChatbotState
 import logging
 
 if TYPE_CHECKING:
     from src.chatbot_interface.chatbot import ChatbotInterface
     from src.signals.gui_signal_manager import GUISignalManager
     from src.signals.API_signal_manager import APISignalManager
+    from src.signals.chat_signal_manager import ChatSignalManager
     from src.signals.mediator_signal_manager import MediatorSignalManager
 
 class ChatSignalHandler(BaseSignalHandler):
     """Deals with incoming signals for the Chatbot Interface"""
     def __init__(self, signal_manager, chatbot_interface):
         self.chatbot_interface : 'ChatbotInterface' = chatbot_interface
+        self.chat_signals : 'ChatSignalManager' = signal_manager.chat_signals
         self.gui_signals : 'GUISignalManager' = signal_manager.gui_signals
         self.api_signals : 'APISignalManager' = signal_manager.api_signals
         self.mediator_signals : 'MediatorSignalManager' = signal_manager.mediator_signals
@@ -24,7 +26,6 @@ class ChatSignalHandler(BaseSignalHandler):
     def connect_signals(self):
         self.gui_signals.message_submitted.connect(self.handle_message_submission)
         self.api_signals.chatbot_response_collected.connect(self.handle_response_retrieved)
-        self.api_signals.is_ready_to_go.connect(self.handle_API_ready)
         self.api_signals.api_error.connect(self.handle_api_error)
         self.mediator_signals.public_mediator_msg_ready.connect(self.handle_public_mediator_message)
         self.mediator_signals.internal_mediator_msg_ready.connect(self.handle_internal_mediator_message) 
@@ -41,20 +42,10 @@ class ChatSignalHandler(BaseSignalHandler):
         logging.info("\033[90mChatsignalHandler handle message submission\033[0m")
         self.chatbot_interface.start_message_queueing_thread(message, MessageType.USER)
 
-    @pyqtSlot(bool)
-    def handle_API_ready(self, is_ready: bool):
-        logging.info("\033[90mChatsignalHandler handle API ready\033[0m")
-        logging.info(f"API Ready: {is_ready}")
-        queue_empty = self.chatbot_interface.message_queue.empty()
-        self.chatbot_interface.message_queue.set_moving(is_ready)
-        if not queue_empty: 
-            self.chatbot_interface.send_message_from_queue()
-        else: 
-            self.chatbot_interface.declare_line_free(is_ready and queue_empty)
-
     @pyqtSlot(str)
     def handle_api_error(self, error: str):
         logging.error(f"API Error: {error}")
+        self.chatbot_interface.state_manager.update_state(ChatbotState.ERROR)
 
     def handle_public_mediator_message(self, message):
         logging.info("\033[90mChatsignalHandler handle mediator message\033[0m")

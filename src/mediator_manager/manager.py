@@ -8,11 +8,13 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 import random
 import numpy as np
 from src.interfaces.data_models import UserData, MediatorData
+from src.signals.chat_signal_manager import ChatbotState
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.client.client import SignalManager
+    from src.chatbot_interface.chat_state_manager import ChatStateManager
 
 
 class MediatorTimerThread(QThread):
@@ -72,12 +74,13 @@ class MediatorManagementModule(ISystemModule, IMediatorHandler):
     def __init__(self, signal_manager: 'SignalManager'):
         super().__init__()  # Initialize base class properties
         self.signals = signal_manager.mediator_signals
+        self.chatbot_state_manager = None
         self.timer_thread = MediatorTimerThread()
         self.sentiment_analyzer = SentimentIntensityAnalyzer()  # Initialize VADER
         self.current_mediator = None
         self.input_history = []
         self.unanswered_count = 0  # Initialize the count of unanswered messages
-        self.is_chatbot_line_free = False
+        self.message_to_send : 'tuple[str, bool]' = None 
 
     # Implement abstract methods from ISystemModule
     def initialize(self):
@@ -117,11 +120,27 @@ class MediatorManagementModule(ISystemModule, IMediatorHandler):
         return super().status()  # Return the module's status
 
     # IMediatorHandler specific methods
-    def set_line_status(self, is_free):
-        self.is_chatbot_line_free = is_free
+    def store_message_to_send(self, msg_to_send):
+        self.message_to_send = msg_to_send
 
-    def get_line_status(self): 
-        return self.is_chatbot_line_free
+    def dispatch_message(self): 
+        msg = self.get_message_to_send()
+        if msg: 
+            message, internal = msg
+            self.send_message(message, internal)
+        else: 
+            logging.info("Chatbot is IDLE but Mediator has no message to send")
+
+    def get_message_to_send(self) -> tuple[str, bool]:
+        message = self.message_to_send
+        if message: 
+            self.message_to_send = None
+            return message
+        else: 
+            return None
+
+    def attach_chatbot_state_manager(self, chatbot_state_manager: 'ChatStateManager'):
+        self.chatbot_state_manager = chatbot_state_manager
 
     def load_mediator(self):
         logging.info("Requesting new mediator...")
@@ -144,7 +163,6 @@ class MediatorManagementModule(ISystemModule, IMediatorHandler):
             genome_id, deserialized_network = pickle.loads(pickled_object)
         except pickle.UnpicklingError:
             assert False, "new_mediator is not a valid serialized object"
-        logging.info(f"Mediator unpacked with id: {genome_id}")
         self.current_mediator = Mediator(genome_id, deserialized_network)
         logging.info(f"Mediator attached: {genome_id}.")
         logging.info("\033[96mAbout to emit new mediator assigned\033[0m")
@@ -207,15 +225,23 @@ class MediatorManagementModule(ISystemModule, IMediatorHandler):
         normalized_input_data = self.normalize_input_data(input_data)
         biggest_output, index = self.current_mediator.process_input(normalized_input_data)
         logging.info(f"Biggest output: {biggest_output}, index: {index}")
-        message, internal = self.get_message(index)
+        message, internal = self.get_message_and_type(index)
         if biggest_output >= 0.5:
-            logging.info("\033[96mAbout to emit mediator msg ready\033[0m")
+            self.send_message(message, internal)
+
+    def send_message(self, message: str, internal: bool):
+        logging.info("\033[96mAbout to emit mediator msg ready\033[0m")
+        if self.chatbot_state_manager.is_state(ChatbotState.IDLE):
             if internal:
                 self.signals.internal_mediator_msg_ready.emit(message)
             else:
                 self.signals.public_mediator_msg_ready.emit(message)
-    
-    def get_message(self, index):
+        else: 
+            logging.info(f"\033[97mChatbot state: {self.chatbot_state_manager.state}\033[0m")
+            msg_to_store = (message, internal)
+            self.store_message_to_send(msg_to_store)
+
+    def get_message_and_type(self, index):
         calm_messages = [
             "From now on, speak in a calm and soothing manner. Let's create a peaceful and relaxing atmosphere.",
             "Be calm and collected in the conversation. Please maintain a serene and tranquil tone.",

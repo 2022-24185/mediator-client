@@ -215,7 +215,7 @@ class ChatGPT(QObject, SeleniumService):
     
     def query(self, text: str) -> str:
         try:
-            if self.state_manager.state == ChatbotState.SENDING_INSTRUCTIONS:
+            if self.state_manager.is_state(ChatbotState.SENDING_INSTRUCTIONS):
                 self.enter_text(text)
             else: 
                 self.state_manager.update_state(ChatbotState.API_BUSY)
@@ -330,11 +330,10 @@ class ChatGPT(QObject, SeleniumService):
         self.is_ready = True
         self.is_first_message = False
         self.worker = None
+        if not self.state_manager.is_state(ChatbotState.SENDING_INSTRUCTIONS):
+            self.state_manager.update_state(ChatbotState.API_READY)
         logging.info("\033[96mAbout to emit response collected\033[0m")
         self.signals.chatbot_response_collected.emit(message)
-        logging.info("\033[96mAbout to emit is ready to go\033[0m")
-        self.state_manager.update_state(ChatbotState.API_READY)
-        #self.signals.is_ready_to_go.emit(True)
 
     def refresh_and_retry(self):
         """Refresh the page and retry the operation."""

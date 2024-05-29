@@ -17,16 +17,14 @@ class MediatorSignalHandler(BaseSignalHandler):
         super().__init__(signal_manager, manager)
 
     def connect_signals(self):
-        self.chat_signals.is_line_free.connect(self.handle_is_line_free)
+        self.chat_signals.state_idle.connect(self.handle_is_line_free)
         self.collector_signals.data_ready_for_mediator.connect(self.handle_data_received)
         self.collector_signals.new_mediator_fetched.connect(self.handle_new_mediator_fetched)
 
-    @pyqtSlot(bool)
-    def handle_is_line_free(self, is_free : bool):
+    @pyqtSlot()
+    def handle_is_line_free(self):
         logging.info("\033[90mMediatorSignalHandler handle is line free\033[0m")
-        logging.info(f"Is line free: {is_free}")
-        if is_free:
-            self.manager.set_line_status(is_free)
+        self.manager.dispatch_message()
 
     @pyqtSlot(dict)
     def handle_data_received(self, data : dict):

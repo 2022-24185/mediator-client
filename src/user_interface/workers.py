@@ -85,7 +85,7 @@ class ProcessNextMessageInQueueWorker(QThread):
     def run(self):
         #debugpy.debug_this_thread()
         logging.info("\033[91mProcessNextMessageInQueueWorker started\033[0m")
-        self.chatbot._send_message(self.message)
+        self.chatbot.process_message(self.message)
         self.finished.connect(self.cleanup)
 
     def cleanup(self):

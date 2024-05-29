@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING
-from src.chatbot_interface.chatbot import ChatbotState
 from src.signals.chat_signal_manager import ChatbotState
 
 if TYPE_CHECKING:

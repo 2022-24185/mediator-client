@@ -60,7 +60,7 @@ class ChatbotInterface(ISystemModule, IChatbotService):
             return
         instructions = instructions.replace('"', '\\"')
         logging.info("Sending instructions to Bard chatbot...")
-        self.message_queue.add_message(instructions, MessageType.MEDIATOR_INTERNAL)
+        self.add_message_to_queue(instructions, MessageType.MEDIATOR_INTERNAL)
         self.state_manager.update_state(ChatbotState.SENDING_INSTRUCTIONS)
 
     def stop(self):
@@ -74,11 +74,6 @@ class ChatbotInterface(ISystemModule, IChatbotService):
 
     def update(self):
         logging.info("Updating ChatbotInterface module...")
-
-    def declare_line_free(self, is_ready: bool):
-        logging.info(f"ChatbotInterface ready state changed to: {is_ready}")
-        logging.info("\033[96mAbout to emit is line free\033[0m")
-        self.signals.is_line_free.emit(is_ready)
 
     def set_mode(self, mode: MessageType):
         self.current_mode = mode
@@ -112,24 +107,11 @@ class ChatbotInterface(ISystemModule, IChatbotService):
 
     def add_message_to_queue(self, message: str, message_type: MessageType):
         self.message_queue.add_message(message, message_type)
-        
-    def _send_message(self, message: str) -> str:
-        try:
-            self.bard.query(message)
-            logging.info(f"Sent query to bard")
-        except Exception as e: 
-            logging.error("Error during Bard chatbot communication.")
-            error_message = "Error communicating with Bard chatbot:" + str(e)
-            logging.error(error_message)
-            is_secret = self.message_queue.get_state().get("is_secret")
-            if not is_secret:
-                logging.info("\033[96mAbout to emit chatbot error\033[0m")
-                self.signals.chatbot_error.emit(error_message)  # Emit the error message
-            return error_message
     
     def try_process_next_message_in_queue(self):
         sending_instructions = self.state_manager.is_state(ChatbotState.SENDING_INSTRUCTIONS)
         api_ready = self.state_manager.is_state(ChatbotState.API_READY)
+        idle = self.state_manager.is_state(ChatbotState.IDLE)
 
         if sending_instructions: 
             message, _ = self.message_queue.get_next_message()
@@ -139,7 +121,7 @@ class ChatbotInterface(ISystemModule, IChatbotService):
             self.process_message(message)
             return
         
-        if not api_ready:
+        if not (api_ready or idle):
             logging.info("Chatbot not ready to process messages.")
             return
         
@@ -161,20 +143,10 @@ class ChatbotInterface(ISystemModule, IChatbotService):
             logging.error(f"Error in sending or processing message: {e}"[:50])
             self.state_manager.update_state(ChatbotState.ERROR)
         
-    def send_message_from_queue(self):
-        self.message_queue.process_next_message()
-        
-    def update_first_message(self): 
-        logging.info("Updating first message...")
-        first = self.message_queue.get_state().get("is_first_message")
-        if first: 
-            logging.info("First message has been submitted.")
-            self.message_queue.submitted_first_message()
-            self.signals.first_message_submitted.emit()
-
     def process_response(self, reply):
         if self.state_manager.is_state(ChatbotState.SENDING_INSTRUCTIONS):
             self.state_manager.update_state(ChatbotState.INSTRUCTIONS_SENT)
+            self.state_manager.update_state(ChatbotState.API_READY)
         reply = "BARD: " + reply
         reply_data = ReplyData(last_response=reply, last_response_time=time.time(), message_mode = self.get_mode().value)
         should_display = (self.get_mode() == MessageType.MEDIATOR_PUBLIC) or (self.get_mode() == MessageType.USER)
@@ -182,6 +154,7 @@ class ChatbotInterface(ISystemModule, IChatbotService):
             self.signals.public_chatbot_msg_received.emit(reply_data.model_dump())
         else:
             self.signals.internal_chatbot_msg_received.emit(reply_data.model_dump())
+        self.try_process_next_message_in_queue()
         logging.info(f"Received response from chatbot API: {reply_data.last_response}"[:50])
 
     def start_message_queueing_thread(self, message, message_type: MessageType) -> str:
@@ -192,30 +165,6 @@ class ChatbotInterface(ISystemModule, IChatbotService):
         self.worker.start()
         message_data = MessageData.model_validate({"last_message": message, "last_message_time": time.time()})
         self.signals.dialogue_user_msg_received.emit(message_data.model_dump())
-    
-    def wait_for_bard(self):
-        logging.info("Waiting for Bard to be ready...")
-        loop = QEventLoop()
-        check_interval = 500  # Check every 1000 milliseconds (1 second)
-
-        def check_ready():
-            if self.bard.is_ready_for_next_message():
-                loop.quit()
-
-        timer = QTimer()
-        timer.timeout.connect(check_ready)
-        timer.start(check_interval)
-
-        loop.exec_()  # Block here until loop.quit() is called
-        timer.stop()
-        logging.info("Bard is now ready.")
-
-    def handle_chatbot_event(self, event: dict):
-        """
-        Handles specific events from the Bard chatbot.
-        """
-        logging.info(f"Handling Bard chatbot event: {event}")
-        # Event-specific logic goes here
 
     def update_settings(self, settings: dict):
         """
